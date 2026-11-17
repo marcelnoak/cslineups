@@ -17,13 +17,13 @@
 
 const MAPS = [
   { name: "Dust2",   img: "images/maps/dust2.jpg", radar: "images/radar/dust2.webp" },
-  { name: "Inferno", img: "images/maps/inferno.jpg" },
+  { name: "Inferno", img: "images/maps/inferno.jpg", radar: "images/radar/inferno.webp" },
   { name: "Cache",   img: "images/maps/cache.jpg", radar: "images/radar/cache.webp" },
-  { name: "Mirage",  img: "images/maps/mirage.jpg" },
-  { name: "Anubis",  img: "images/maps/anubis.jpg" },
-  { name: "Nuke",    img: "images/maps/nuke.jpg" },
+  { name: "Mirage",  img: "images/maps/mirage.jpg", radar: "images/radar/mirage.webp" },
+  { name: "Anubis",  img: "images/maps/anubis.jpg", radar: "images/radar/anubis.webp" },
+  { name: "Nuke",    img: "images/maps/nuke.jpg", radar: "images/radar/nuke.webp" },
   { name: "Ancient", img: "images/maps/ancient.jpg", radar: "images/radar/ancient.webp" },
-  { name: "Overpass", img: "images/maps/overpass.jpg" },
+  { name: "Overpass", img: "images/maps/overpass.jpg", radar: "images/radar/overpass.webp" },
   //{ name: "Vertigo", img: "images/maps/vertigo.jpg" },
   //{ name: "Train",   img: "images/maps/train.jpg" },
 ];

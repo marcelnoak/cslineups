@@ -87,7 +87,7 @@ addLink.hidden = editLink.hidden = !isLocal;
 
 let activeMap = null;   // aktuell gewählte Map (Liste)
 let activeId  = null;   // aktuell gewähltes Lineup (Detail)
-let listMode  = 'list'; // 'list' | 'radar' – bleibt beim Zurückkehren aus der Detailansicht erhalten
+let listMode  = 'radar'; // 'radar' (Standard, sofern die Map ein Radar hat) | 'list' – bleibt beim Zurückkehren erhalten
 let sideFilter = '', typeFilter = '';
 let radarClusters = [], openCluster = -1;
 
@@ -127,13 +127,13 @@ function filtered() {
   return LINEUPS.filter(l =>
     l.map === activeMap &&
     (!sideFilter || l.side === sideFilter) &&
-    (!typeFilter || l.type === typeFilter) &&
-    (!term || (l.title + ' ' + l.from + ' ' + l.type).toLowerCase().includes(term))
+    (!typeFilter || typesOf(l).includes(typeFilter)) &&
+    (!term || (l.title + ' ' + l.from + ' ' + typeLabel(l)).toLowerCase().includes(term))
   );
 }
 
 function renderFilters() {
-  const types = [...new Set(LINEUPS.filter(l => l.map === activeMap).map(l => l.type))];
+  const types = [...new Set(LINEUPS.filter(l => l.map === activeMap).flatMap(typesOf))];
   const chips = (kind, cur, vals) => vals.map(([v, t]) =>
     `<button class="chip" data-f="${kind}" data-v="${esc(v)}" aria-pressed="${cur === v}">${esc(t)}</button>`).join('');
   filtersEl.innerHTML =
@@ -166,7 +166,7 @@ function renderList(rows) {
           <h3>${esc(l.title)}</h3>
           <div class="lu-tags">
             <span class="tag side-${esc(l.side)}">${esc(l.side)}-Seite</span>
-            <span class="tag">${esc(l.type)}</span>
+            <span class="tag">${esc(typeLabel(l))}</span>
             <span class="tag">${esc(l.from)}</span>
           </div>
           <p class="lu-sub">${res[0] && res[0].note ? ' · ' + esc(res[0].note) : ''}</p>
@@ -177,23 +177,23 @@ function renderList(rows) {
 }
 
 /* ---------- 2b) Radar: wo die Utility landet ---------- */
-// Lineups mit (fast) gleichem Landepunkt teilen sich einen Marker.
+// Würfe mit (fast) gleichem Landepunkt teilen sich einen Marker; ein Lineup mit mehreren Würfen hat mehrere Marker.
 function clusterize(rows) {
   const out = [];
-  for (const l of rows) {
-    if (!l.landAt) continue;
-    const c = out.find(c => Math.hypot(c.x - l.landAt.x, c.y - l.landAt.y) < 0.025);
-    if (c) c.items.push(l); else out.push({ x: l.landAt.x, y: l.landAt.y, items: [l] });
+  for (const p of rows.flatMap(radarPoints)) {
+    const c = out.find(c => Math.hypot(c.x - p.landAt.x, c.y - p.landAt.y) < 0.025);
+    if (c) c.items.push(p); else out.push({ x: p.landAt.x, y: p.landAt.y, items: [p] });
   }
   return out;
 }
+const pointName = p => p.l.title + (p.step >= 0 ? ' – ' + p.label : '');
 
 function pinHtml(c, i) {
-  const types = new Set(c.items.map(l => l.type)), sides = new Set(c.items.map(l => l.side));
-  const bg = types.size === 1 ? typeColor(c.items[0].type) : 'var(--hud)';
-  const side = sides.size === 1 ? 'side-' + c.items[0].side : 'side-mix';
-  const label = c.items.length > 1 ? c.items.length : c.items[0].type.charAt(0);
-  const tip = c.items.map(l => `${l.title} – ${l.type} von ${l.from}`).join(' · ');
+  const types = new Set(c.items.flatMap(p => p.types)), sides = new Set(c.items.map(p => p.l.side));
+  const bg = types.size === 1 ? typeColor([...types][0]) : 'var(--hud)';
+  const side = sides.size === 1 ? 'side-' + c.items[0].l.side : 'side-mix';
+  const label = c.items.length > 1 ? c.items.length : typeLetters(c.items[0].types);
+  const tip = c.items.map(p => `${pointName(p)} (${p.types.join(' + ')} von ${p.l.from})`).join(' · ');
   return `<button class="pin ${side}${i === openCluster ? ' open' : ''}" style="left:${pct(c.x)};top:${pct(c.y)};background:${bg}"
     data-c="${i}" title="${esc(tip)}" aria-label="${esc(tip)}">${label}</button>`;
 }
@@ -202,11 +202,11 @@ function popHtml(c) {
   const side = c.x > 0.7 ? ' left' : c.x < 0.3 ? ' right' : '';
   const up = c.y > 0.6 ? ' up' : '';
   return `<div class="pop${side}${up}" style="left:${pct(c.x)};top:${pct(c.y)}" role="menu">
-    ${c.items.map(l => {
-      const r = asResults(l)[0];
-      return `<button class="pop-item" data-id="${esc(l.id)}" role="menuitem">
+    ${c.items.map(p => {
+      const l = p.l, r = asResults(l)[0];
+      return `<button class="pop-item" data-id="${esc(l.id)}" data-step="${p.step}" role="menuitem">
         ${r && r.img ? `<img src="${esc(thumbOf(r.img))}" data-full="${esc(r.img)}" alt="" onerror="${onThumbErr}">` : ''}
-        <span><b>${esc(l.title)}</b><small>${esc(l.side)} · ${esc(l.type)} · von ${esc(l.from)}</small></span>
+        <span><b>${esc(pointName(p))}</b><small>${esc(l.side)} · ${esc(p.types.join(' + '))} · von ${esc(l.from)}</small></span>
       </button>`;
     }).join('')}
   </div>`;
@@ -221,7 +221,7 @@ function renderRadar(rows) {
     ${radarClusters.map(pinHtml).join('')}
     ${openCluster >= 0 ? popHtml(radarClusters[openCluster]) : ''}`;
   showLines(openCluster);
-  const missing = rows.filter(l => !l.landAt).length;
+  const missing = rows.filter(l => !radarPoints(l).length).length;
   radarNote.innerHTML = missing
     ? `${missing} ${missing === 1 ? 'Lineup hat' : 'Lineups haben'} noch keinen Radar-Punkt` +
       (isLocal ? ` · <a href="editor.html#fill=${encodeURIComponent(activeMap)}">jetzt nachtragen</a>` : '')
@@ -263,10 +263,10 @@ function showList(name, mode = listMode) {
   q.value = '';
   renderFilters();
   renderView();
-  setHash(encodeURIComponent(name) + (listMode === 'radar' ? '/radar' : ''));
+  setHash(encodeURIComponent(name) + (listMode === 'list' && radarOf(name) ? '/list' : ''));
   window.scrollTo(0, 0);
 }
-function showDetail(id) {
+function showDetail(id, step = -1) {
   const l = LINEUPS.find(x => x.id === id);
   if (!l) { showMaps(); return; }
   activeMap = l.map; activeId = id;
@@ -277,6 +277,9 @@ function showDetail(id) {
   renderDetail();
   setHash(encodeURIComponent(l.map) + '/' + encodeURIComponent(id));
   window.scrollTo(0, 0);
+  // Vom Radar aus einen bestimmten Wurf angeklickt → direkt dorthin
+  const el = step >= 0 && detail.querySelector(`.step[data-step="${step}"]`);
+  if (el) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 90);
 }
 
 mapsEl.addEventListener('click', e => {
@@ -307,11 +310,11 @@ radarEl.addEventListener('mouseover', e => { const p = e.target.closest('.pin');
 radarEl.addEventListener('mouseout', e => { if (e.target.closest('.pin')) showLines(openCluster); });
 radarEl.addEventListener('click', e => {
   const item = e.target.closest('.pop-item');
-  if (item) { showDetail(item.dataset.id); return; }
+  if (item) { showDetail(item.dataset.id, +item.dataset.step); return; }
   const p = e.target.closest('.pin');
   if (p) {
     const c = radarClusters[+p.dataset.c];
-    if (c.items.length === 1) { showDetail(c.items[0].id); return; }
+    if (c.items.length === 1) { showDetail(c.items[0].l.id, c.items[0].step); return; }
     openCluster = openCluster === +p.dataset.c ? -1 : +p.dataset.c;
   } else if (!e.target.closest('.pop')) openCluster = -1;
   renderView();
@@ -342,7 +345,7 @@ function boot() {
   const parts = raw.split('/').map(decodeURIComponent);
   const id = parts[1];
   if (id && LINEUPS.some(l => l.id === id)) showDetail(id);
-  else if (LINEUPS.some(l => l.map === parts[0])) showList(parts[0], id === 'radar' ? 'radar' : 'list');
+  else if (LINEUPS.some(l => l.map === parts[0])) showList(parts[0], id === 'list' ? 'list' : 'radar');   // alte #…/radar-Links funktionieren weiter
   else showMaps();
 }
 

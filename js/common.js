@@ -14,6 +14,34 @@ const asResults = l => Array.isArray(l.result) ? l.result.filter(Boolean) : (l.r
 const STANCES = { stand: 'Stehen', crouch: 'Ducken', jump: 'Springen', run: 'Laufen', walk: 'Gehen' };
 const stanceLabel = s => STANCES[s] || s;
 
+// type ist ein String ("Smoke") oder bei Kombi-Lineups eine Liste (["Smoke", "HE"]).
+// Ein einzelner Wurf (Eintrag in lineups) kann zusätzlich eine eigene Utility (type) und einen eigenen
+// Landepunkt (landAt) haben, z. B. drei Smokes von einer Position. Würfe ohne beides sind Zusatzbilder ("Zoomed").
+const stepsOf = l => l.lineups || [];
+const baseType = l => [].concat(l.type || [])[0] || '';
+const typesOf = l => [...new Set([].concat(l.type || [], stepsOf(l).map(s => s.type).filter(Boolean)))];
+
+// "3× Smoke", "2× Smoke + HE" – zählt eigene Würfe; ohne die einfach alle Typen
+function typeLabel(l) {
+  const own = stepsOf(l).filter(s => s.type || s.landAt);
+  if (own.length < 2) return typesOf(l).join(' + ');
+  const counts = new Map();
+  for (const s of own) { const t = s.type || baseType(l); counts.set(t, (counts.get(t) || 0) + 1); }
+  return [...counts].map(([t, n]) => (n > 1 ? n + '× ' : '') + t).join(' + ');
+}
+
+// Kurzzeichen für Radar-Marker: Anfangsbuchstaben der Typen, z. B. "SHM"
+const typeLetters = types => types.map(t => t.charAt(0)).join('');
+
+// Punkte eines Lineups auf dem Radar: je Wurf mit eigenem Landepunkt, sonst der Landepunkt des Lineups
+function radarPoints(l) {
+  const own = stepsOf(l).map((s, i) => ({ s, i })).filter(x => x.s.landAt);
+  if (own.length) return own.map(({ s, i }) => ({
+    l, step: i, label: s.label || 'Wurf ' + (i + 1), types: [s.type || baseType(l)], landAt: s.landAt, throwAt: s.throwAt || l.throwAt,
+  }));
+  return l.landAt ? [{ l, step: -1, label: '', types: typesOf(l), landAt: l.landAt, throwAt: l.throwAt }] : [];
+}
+
 // Radar: Punkte (landAt/throwAt) sind relative Koordinaten 0–1 auf dem Radarbild der Map.
 const TYPE_COLORS = { Smoke: '#D0D7DE', Flash: '#F5D547', Molotov: '#F0883E', HE: '#F85149', Decoy: '#8B949E' };
 const typeColor = t => TYPE_COLORS[t] || '#9BA3AE';
@@ -45,7 +73,7 @@ function lineupCard(l) {
         <div class="meta">
           <span class="tag map">${esc(l.map)}</span>
           <span class="tag side-${esc(l.side)}">${esc(l.side)}-Seite</span>
-          <span class="tag">${esc(l.type)}</span>
+          <span class="tag">${esc(typeLabel(l))}</span>
         </div>
       </div>
       <div class="body">
@@ -58,8 +86,8 @@ function lineupCard(l) {
         <section class="col">
           <p class="col-label">Fadenkreuz &amp; Wurf</p>
           ${(l.lineups || []).map((s, i) => `
-            <div class="step">
-              <div class="step-head"><span class="step-num">${i + 1}</span><h3>${esc(s.label || ('Wurf ' + (i + 1)))}</h3></div>
+            <div class="step" data-step="${i}">
+              <div class="step-head"><span class="step-num">${i + 1}</span><h3>${esc(s.label || ('Wurf ' + (i + 1)))}</h3>${s.type ? `<span class="tag">${esc(s.type)}</span>` : ''}</div>
               ${shot(s.img, s.label || ('Wurf ' + (i + 1)))}
               ${(s.stance || (s.input && s.input.length)) ? `<div class="inputs">
                 ${s.stance ? `<span class="key stance">${esc(stanceLabel(s.stance))}</span>${s.input && s.input.length ? '<span class="plus">+</span>' : ''}` : ''}
