@@ -10,7 +10,9 @@ eigenen Seite aus – andere Webseiten im Browser können nichts schreiben.
 Der Server ist ausschließlich auf diesem Rechner erreichbar (127.0.0.1).
 """
 import json
+import socket
 import sys
+import threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -20,7 +22,9 @@ ROOT = Path(__file__).resolve().parent.parent
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 WRITABLE = {"images": {".webp"}, "data": {".js"}}
 MAX_BYTES = 25 * 1024 * 1024
-HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
+HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}", f"[::1]:{PORT}"}
+# Browser lösen "localhost" oft zuerst als IPv6 (::1) auf – daher auf beiden Loopback-Adressen lauschen.
+LOOPBACK = [(socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")]
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -75,12 +79,39 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(raw)
 
 
+def port_taken(family, host):
+    with socket.socket(family, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, PORT)) == 0
+
+
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
+
+
 if __name__ == "__main__":
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), partial(Handler, directory=str(ROOT)))
+    # Läuft schon ein anderer Server auf dem Port (z. B. noch "python -m http.server"), würde der
+    # Browser je nach Adresse mal den einen, mal den anderen erreichen – also lieber gar nicht starten.
+    if any(port_taken(f, h) for f, h in LOOPBACK if socket.has_ipv6 or f == socket.AF_INET):
+        sys.exit(f"Port {PORT} ist schon belegt – läuft noch ein anderer Server (z. B. python -m http.server)?\n"
+                 f"Den bitte mit Strg+C beenden oder einen anderen Port wählen: python tools/serve.py 8766")
+
+    handler = partial(Handler, directory=str(ROOT))
+    servers = []
+    for family, host in LOOPBACK:
+        try:
+            srv = type("S", (Server,), {"address_family": family})((host, PORT), handler)
+            servers.append(srv)
+        except OSError:
+            if family == socket.AF_INET:
+                raise  # IPv4 muss gehen; IPv6 ist optional
+    for srv in servers[1:]:
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+
     print(f"Lineup-Buch:  http://localhost:{PORT}/")
     print(f"Editor:       http://localhost:{PORT}/editor.html")
     print("Beenden mit Strg+C")
     try:
-        server.serve_forever()
+        servers[0].serve_forever()
     except KeyboardInterrupt:
         pass
