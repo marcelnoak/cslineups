@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lineup-Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+/* ---------- Editor-spezifisch ---------- */
+.ed{display:flex;flex-direction:column;gap:22px}
+.panel{border:1px solid var(--edge);background:var(--panel);padding:22px 24px}
+.panel-head{display:flex;align-items:center;gap:12px;margin:0 0 18px}
+.panel-head h2{font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.06em;font-size:19px;margin:0}
+.panel-head .chip{margin-left:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field > span{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--sand)}
+.field .req{color:var(--hud)}
+.in{
+  background:var(--void);border:1px solid var(--edge);color:var(--chalk);
+  font-family:var(--body);font-size:14px;padding:8px 10px;border-radius:2px;width:100%;
+}
+.in:focus{outline:2px solid var(--hud);outline-offset:1px}
+.in:disabled{color:var(--mute)}
+textarea.in{resize:vertical;min-height:40px}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg .chip{padding:7px 12px}
+
+/* Bild-Slots */
+.slot{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px;align-items:start}
+.slot + .slot{margin-top:20px;padding-top:20px;border-top:1px dashed var(--edge)}
+.slot-side{display:flex;flex-direction:column;gap:14px}
+.slot-tools{display:flex;gap:6px;align-items:center}
+.slot-tools .step-num{margin-right:auto}
+.mini{
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  background:transparent;color:var(--sand);border:1px solid var(--edge);padding:4px 9px;border-radius:2px;cursor:pointer;
+}
+.mini:hover{color:var(--chalk);border-color:var(--sand)}
+.mini:disabled{opacity:.35;cursor:default}
+.mini.danger:hover{color:#F07178;border-color:#F07178}
+.drop{
+  position:relative;display:grid;place-items:center;text-align:center;min-height:170px;padding:16px;
+  border:1px dashed var(--edge);background:var(--void);color:var(--mute);font-size:13.5px;
+  cursor:pointer;border-radius:2px;transition:border-color .12s,background .12s;
+}
+.drop:hover{border-color:var(--sand)}
+.drop:focus{outline:none;border-color:var(--hud);border-style:solid}
+.drop.over{border-color:var(--hud);background:rgba(233,160,56,.07)}
+.drop.has{padding:0;border-style:solid;min-height:0;cursor:default}
+.drop img{display:block;width:100%;height:auto}
+.drop b{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--sand);margin-bottom:6px}
+.drop .badge{position:absolute;left:8px;top:8px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;background:var(--hud);color:#121418;padding:2px 6px;border-radius:2px}
+.drop .clear{position:absolute;right:8px;top:8px;background:rgba(13,15,18,.85)}
+.drop.busy::after{content:"Konvertiere…";position:absolute;inset:0;display:grid;place-items:center;background:rgba(13,15,18,.8);color:var(--hud);font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase}
+.keys{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.keys .chip{padding:4px 9px;font-size:11px}
+.keys .in{width:110px;padding:5px 8px;font-size:12px}
+.order{font-family:var(--mono);font-size:11px;color:var(--mute);letter-spacing:.06em}
+.add{margin-top:18px}
+
+/* Aktionen + Status */
+.bar .in{width:auto;min-width:220px}
+.primary{
+  font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  background:var(--hud);color:#121418;border:1px solid var(--hud);padding:8px 16px;border-radius:2px;cursor:pointer;
+}
+.primary:hover{filter:brightness(1.08)}
+.primary:disabled{opacity:.5;cursor:default}
+.status{font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--sand);margin:0;min-height:1.4em}
+.status.ok{color:#5BC17F}
+.status.err{color:#F07178}
+.status a{color:var(--hud)}
+.folder{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--mute)}
+.folder.ok{color:#5BC17F}
+.foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.foot .mini.danger{margin-left:auto}
+.preview .card{margin-bottom:0}
+
+@media (max-width:860px){
+  .slot{grid-template-columns:1fr}
+  .bar .in{min-width:0;width:100%}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">Lineup-Buch &middot; Editor</p>
+    <h1 id="edTitle">Neues Lineup</h1>
+    <p>Screenshots reinziehen, auswählen oder mit <span class="key">Strg</span> + <span class="key">V</span> einfügen. Sie werden automatisch als WebP gespeichert.</p>
+  </header>
+
+  <nav class="bar" aria-label="Editor">
+    <a class="back" id="backLink" href="index.html">&larr; Lineup-Buch</a>
+    <select class="in" id="pick" aria-label="Lineup zum Bearbeiten wählen"></select>
+    <span class="folder bar-end" id="folder"></span>
+    <button class="chip" id="pickDir" type="button">Projektordner wählen</button>
+    <button class="primary" id="save" type="button">Speichern</button>
+  </nav>
+
+  <main class="ed" id="form"></main>
+
+  <section class="panel" style="margin-top:22px">
+    <div class="foot">
+      <button class="primary" id="save2" type="button">Speichern</button>
+      <p class="status" id="status" role="status"></p>
+      <button class="mini danger" id="del" type="button" hidden>Lineup löschen</button>
+    </div>
+  </section>
+
+  <section style="margin-top:34px">
+    <p class="col-label">Vorschau</p>
+    <div class="preview" id="preview"></div>
+  </section>
+</div>
+
+<input type="file" id="file" accept="image/*" hidden>
+
+<script src="data/maps.js"></script>
+<script src="js/common.js"></script>
+<script>
+const formEl   = document.getElementById('form');
+const preview  = document.getElementById('preview');
+const statusEl = document.getElementById('status');
+const pickEl   = document.getElementById('pick');
+const folderEl = document.getElementById('folder');
+const fileEl   = document.getElementById('file');
+const delBtn   = document.getElementById('del');
+const edTitle  = document.getElementById('edTitle');
+
+const TYPES = ['Smoke', 'Flash', 'Molotov', 'HE', 'Decoy'];
+const KEYS  = ['W', 'A', 'S', 'D', 'SHIFT', 'CTRL', 'SPACE', 'MOUSE1', 'MOUSE2'];
+
+// Bild-Slot: null | { path } (liegt schon im Projekt) | { blob, url } (neu, noch nicht gespeichert)
+let state = null;
+let dirty = false;
+let dirHandle = null;
+let pasteTarget = null;   // zuletzt fokussierter Bild-Slot (für Strg+V)
+let fileTarget = null;    // Slot, für den der Datei-Dialog offen ist
+
+const slug = s => String(s).toLowerCase()
+  .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const imgSrc = slot => slot ? (slot.url || slot.path) : null;
+
+function blank(map) {
+  return {
+    editing: null, idTouched: false,
+    id: '', map: map || MAPS[0].name, side: 'T', type: 'Smoke', title: '', from: '',
+    position: { img: null, note: '' },
+    lineups:  [{ img: null, label: 'Wurf', stance: 'stand', input: ['MOUSE1'], note: '' }],
+    result:   [{ img: null, note: '' }],
+  };
+}
+
+function fromLineup(l) {
+  const pathSlot = p => p ? { path: p } : null;
+  return {
+    editing: l.id, idTouched: true,
+    id: l.id, map: l.map, side: l.side || 'T', type: l.type || 'Smoke', title: l.title || '', from: l.from || '',
+    position: { img: pathSlot(l.position && l.position.img), note: (l.position && l.position.note) || '' },
+    lineups:  (l.lineups || []).map(s => ({ img: pathSlot(s.img), label: s.label || '', stance: s.stance || '', input: [...(s.input || [])], note: s.note || '' })),
+    result:   asResults(l).map(r => ({ img: pathSlot(r.img), note: r.note || '' })),
+  };
+}
+
+// Vorschlag für neue IDs: <map>-<titel>-<typ>, bei Kollision mit Zähler
+function suggestId() {
+  const base = [mapSlug(state.map), slug(state.title), slug(state.type)].filter(Boolean).join('-');
+  let id = base, n = 2;
+  while (LINEUPS.some(l => l.id === id)) id = base + '-' + n++;
+  return id;
+}
+
+/* ---------- Formular ---------- */
+function opt(value, label, sel) { return `<option value="${esc(value)}"${value === sel ? ' selected' : ''}>${esc(label)}</option>`; }
+
+function dropZone(key, slot, hint) {
+  const src = imgSrc(slot);
+  if (src) return `
+    <div class="drop has" tabindex="0" data-slot="${key}">
+      <img src="${esc(src)}" alt="">
+      ${slot.blob ? '<span class="badge">neu</span>' : ''}
+      <button class="mini clear" type="button" data-act="clear" data-slot="${key}">Entfernen</button>
+    </div>`;
+  return `
+    <div class="drop" tabindex="0" data-slot="${key}">
+      <div><b>${esc(hint)}</b>Bild hierher ziehen, klicken<br>oder auswählen + Strg+V</div>
+    </div>`;
+}
+
+function renderForm() {
+  const s = state, locked = !!s.editing;
+  formEl.innerHTML = `
+    <section class="panel">
+      <div class="panel-head"><h2>Grunddaten</h2></div>
+      <div class="grid">
+        <label class="field"><span>Map</span>
+          <select class="in" data-k="map" ${locked ? 'disabled' : ''}>${MAPS.map(m => opt(m.name, m.name, s.map)).join('')}</select></label>
+        <div class="field"><span>Seite</span>
+          <div class="seg">${['T', 'CT'].map(v => `<button type="button" class="chip" data-act="side" data-v="${v}" aria-pressed="${s.side === v}">${v}</button>`).join('')}</div></div>
+        <label class="field"><span>Typ</span>
+          <select class="in" data-k="type">${TYPES.map(t => opt(t, t, s.type)).join('')}${TYPES.includes(s.type) ? '' : opt(s.type, s.type, s.type)}</select></label>
+        <label class="field"><span>Titel <span class="req">*</span></span>
+          <input class="in" data-k="title" value="${esc(s.title)}" placeholder="z. B. Xbox Smoke"></label>
+        <label class="field"><span>Anstell-Position <span class="req">*</span></span>
+          <input class="in" data-k="from" value="${esc(s.from)}" placeholder="z. B. T Spawn"></label>
+        <label class="field"><span>ID ${locked ? '(fest)' : ''}</span>
+          <input class="in" data-k="id" value="${esc(s.id)}" ${locked ? 'disabled' : ''} spellcheck="false"></label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Position</h2></div>
+      <div class="slot">
+        ${dropZone('position', s.position.img, 'Position-Screenshot')}
+        <div class="slot-side">
+          <label class="field"><span>Notiz</span>
+            <textarea class="in" data-k="position.note" rows="3" placeholder="Wo genau anstellen?">${esc(s.position.note)}</textarea></label>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Fadenkreuz &amp; Wurf</h2></div>
+      ${s.lineups.map((w, i) => `
+        <div class="slot">
+          ${dropZone('lineups.' + i, w.img, 'Wurf ' + (i + 1))}
+          <div class="slot-side">
+            <div class="slot-tools">
+              <span class="step-num">${i + 1}</span>
+              <button class="mini" type="button" data-act="up" data-list="lineups" data-i="${i}" ${i ? '' : 'disabled'}>&uarr;</button>
+              <button class="mini" type="button" data-act="down" data-list="lineups" data-i="${i}" ${i < s.lineups.length - 1 ? '' : 'disabled'}>&darr;</button>
+              <button class="mini danger" type="button" data-act="remove" data-list="lineups" data-i="${i}">Entfernen</button>
+            </div>
+            <div class="grid">
+              <label class="field"><span>Label</span>
+                <input class="in" data-k="lineups.${i}.label" value="${esc(w.label)}" placeholder="Wurf"></label>
+              <label class="field"><span>Haltung</span>
+                <select class="in" data-k="lineups.${i}.stance">${opt('', '—', w.stance)}${Object.entries(STANCES).map(([v, t]) => opt(v, t, w.stance)).join('')}${w.stance && !STANCES[w.stance] ? opt(w.stance, w.stance, w.stance) : ''}</select></label>
+            </div>
+            <div class="field"><span>Tasten <span class="order">(Reihenfolge = Klick-Reihenfolge)</span></span>
+              <div class="keys">
+                ${[...new Set([...KEYS, ...w.input])].map(k => `<button type="button" class="chip" data-act="key" data-i="${i}" data-v="${esc(k)}" aria-pressed="${w.input.includes(k)}">${esc(k)}</button>`).join('')}
+                <input class="in" data-act="customKey" data-i="${i}" placeholder="+ Taste" aria-label="Eigene Taste hinzufügen">
+              </div>
+              <span class="order">${w.input.length ? esc(w.input.join(' + ')) : 'keine Taste'}</span>
+            </div>
+            <label class="field"><span>Notiz</span>
+              <textarea class="in" data-k="lineups.${i}.note" rows="2" placeholder="Worauf zielen?">${esc(w.note)}</textarea></label>
+          </div>
+        </div>`).join('')}
+      <button class="chip add" type="button" data-act="addLineup">+ Wurf hinzufügen</button>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Result</h2></div>
+      ${s.result.map((r, i) => `
+        <div class="slot">
+          ${dropZone('result.' + i, r.img, 'Result ' + (i + 1))}
+          <div class="slot-side">
+            <div class="slot-tools">
+              <span class="step-num">${i + 1}</span>
+              <button class="mini danger" type="button" data-act="remove" data-list="result" data-i="${i}">Entfernen</button>
+            </div>
+            <label class="field"><span>Notiz</span>
+              <textarea class="in" data-k="result.${i}.note" rows="2" placeholder="Was deckt die Utility ab?">${esc(r.note)}</textarea></label>
+          </div>
+        </div>`).join('')}
+      <button class="chip add" type="button" data-act="addResult">+ Result hinzufügen</button>
+    </section>`;
+  renderPreview();
+}
+
+// Das Objekt, wie es in data/<map>.js landet (Bilder hier noch als Vorschau-URL)
+function toLineup(imgOf) {
+  const s = state;
+  const results = s.result.map(r => ({ img: imgOf(r.img), note: r.note }));
+  return {
+    id: s.id, map: s.map, side: s.side, type: s.type, title: s.title, from: s.from,
+    position: { img: imgOf(s.position.img), note: s.position.note },
+    lineups: s.lineups.map(w => ({ img: imgOf(w.img), label: w.label, stance: w.stance, input: w.input, note: w.note })),
+    result: results.length === 1 ? results[0] : results,
+  };
+}
+
+function renderPreview() {
+  const l = toLineup(imgSrc);
+  preview.innerHTML = lineupCard({ ...l, title: l.title || 'Ohne Titel', from: l.from || '…' });
+  edTitle.textContent = state.editing ? 'Lineup bearbeiten' : 'Neues Lineup';
+  delBtn.hidden = !state.editing;
+}
+
+function renderPick() {
+  pickEl.innerHTML = opt('', '+ Neues Lineup', state.editing || '') + MAPS
+    .filter(m => LINEUPS.some(l => l.map === m.name))
+    .map(m => `<optgroup label="${esc(m.name)}">${LINEUPS.filter(l => l.map === m.name)
+      .map(l => opt(l.id, `${l.title} · ${l.type} · ${l.side}`, state.editing)).join('')}</optgroup>`).join('');
+}
+
+/* ---------- Eingaben ---------- */
+function setPath(path, value) {
+  const keys = path.split('.');
+  let o = state;
+  for (const k of keys.slice(0, -1)) o = o[k];
+  o[keys[keys.length - 1]] = value;
+}
+
+function touch() { dirty = true; setStatus(''); }
+
+formEl.addEventListener('input', e => {
+  const k = e.target.dataset.k; if (!k) return;
+  setPath(k, e.target.value);
+  if (k === 'id') state.idTouched = true;
+  if (!state.editing && !state.idTouched && ['title', 'type', 'map'].includes(k)) {
+    state.id = suggestId();
+    formEl.querySelector('[data-k="id"]').value = state.id;
+  }
+  touch();
+  renderPreview();
+});
+
+formEl.addEventListener('keydown', e => {
+  if (e.target.dataset.act === 'customKey' && e.key === 'Enter') {
+    e.preventDefault();
+    const v = e.target.value.trim().toUpperCase(); if (!v) return;
+    const w = state.lineups[+e.target.dataset.i];
+    if (!w.input.includes(v)) w.input.push(v);
+    touch(); renderForm();
+  }
+  // Enter/Leertaste auf einem leeren Bild-Slot öffnet den Datei-Dialog
+  const drop = e.target.classList && e.target.classList.contains('drop') && !e.target.classList.contains('has') ? e.target : null;
+  if (drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openFile(drop.dataset.slot); }
+});
+
+formEl.addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  if (btn) {
+    const { act, i, list, v } = btn.dataset;
+    const n = +i;
+    if (act === 'side') state.side = v;
+    else if (act === 'key') { const w = state.lineups[n]; w.input = w.input.includes(v) ? w.input.filter(k => k !== v) : [...w.input, v]; }
+    else if (act === 'addLineup') state.lineups.push({ img: null, label: 'Wurf ' + (state.lineups.length + 1), stance: 'stand', input: ['MOUSE1'], note: '' });
+    else if (act === 'addResult') state.result.push({ img: null, note: '' });
+    else if (act === 'remove') { const it = state[list][n]; if (it.img && it.img.url) URL.revokeObjectURL(it.img.url); state[list].splice(n, 1); }
+    else if (act === 'up' || act === 'down') { const a = state[list], j = act === 'up' ? n - 1 : n + 1; [a[n], a[j]] = [a[j], a[n]]; }
+    else if (act === 'clear') { setSlot(btn.dataset.slot, null); return; }
+    else return;
+    touch(); renderForm();
+    return;
+  }
+  const drop = e.target.closest('.drop');
+  if (drop && !drop.classList.contains('has')) openFile(drop.dataset.slot);
+});
+
+formEl.addEventListener('focusin', e => { const d = e.target.closest('.drop'); if (d) pasteTarget = d.dataset.slot; });
+
+/* ---------- Bilder ---------- */
+const getSlot = key => key === 'position' ? state.position.img : state[key.split('.')[0]][+key.split('.')[1]].img;
+function setSlot(key, img) {
+  const old = getSlot(key);
+  if (old && old.url) URL.revokeObjectURL(old.url);
+  if (key === 'position') state.position.img = img;
+  else state[key.split('.')[0]][+key.split('.')[1]].img = img;
+  // Kein Fokus auf den gefüllten Slot: das nächste Strg+V soll den nächsten leeren füllen.
+  touch(); renderForm();
+}
+
+// Bild skalieren (max. Breite) und als WebP kodieren
+async function toWebp(blob, maxW, quality) {
+  const bmp = await createImageBitmap(blob);
+  const k = Math.min(1, maxW / bmp.width);
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close();
+  const out = await new Promise(r => c.toBlob(r, 'image/webp', quality));
+  if (!out || out.type !== 'image/webp') throw new Error('Dieser Browser kann kein WebP erzeugen.');
+  return out;
+}
+
+async function takeImage(key, file) {
+  if (!file || !file.type.startsWith('image/')) { setStatus('Das ist kein Bild.', 'err'); return; }
+  const el = formEl.querySelector(`.drop[data-slot="${key}"]`);
+  if (el) el.classList.add('busy');
+  try {
+    const blob = await toWebp(file, 1920, 0.88);
+    setSlot(key, { blob, url: URL.createObjectURL(blob) });
+  } catch (err) {
+    if (el) el.classList.remove('busy');
+    setStatus('Bild konnte nicht gelesen werden: ' + err.message, 'err');
+  }
+}
+
+function openFile(key) { fileTarget = key; fileEl.value = ''; fileEl.click(); }
+fileEl.addEventListener('change', () => { if (fileEl.files[0] && fileTarget) takeImage(fileTarget, fileEl.files[0]); });
+
+formEl.addEventListener('dragover', e => {
+  const d = e.target.closest('.drop'); if (!d) return;
+  e.preventDefault(); d.classList.add('over');
+});
+formEl.addEventListener('dragleave', e => { const d = e.target.closest('.drop'); if (d && !d.contains(e.relatedTarget)) d.classList.remove('over'); });
+formEl.addEventListener('drop', e => {
+  const d = e.target.closest('.drop'); if (!d) return;
+  e.preventDefault(); d.classList.remove('over');
+  takeImage(d.dataset.slot, e.dataTransfer.files[0]);
+});
+
+// Strg+V: in den fokussierten Slot, sonst in den ersten leeren (Position → Würfe → Results)
+document.addEventListener('paste', e => {
+  const item = [...(e.clipboardData ? e.clipboardData.items : [])].find(i => i.type.startsWith('image/'));
+  if (!item) return;
+  e.preventDefault();
+  const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest('.drop');
+  let key = focused ? focused.dataset.slot : null;
+  if (!key) {
+    const all = ['position', ...state.lineups.map((_, i) => 'lineups.' + i), ...state.result.map((_, i) => 'result.' + i)];
+    key = all.find(k => !getSlot(k)) || pasteTarget;
+  }
+  if (key) takeImage(key, item.getAsFile());
+});
+
+/* ---------- Projektordner (File System Access API) ---------- */
+const canWrite = 'showDirectoryPicker' in window;
+
+// Den gewählten Ordner im Browser merken, damit er nicht jedes Mal neu gewählt werden muss.
+function kv(mode, fn) {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('lineup-editor', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onerror = () => rej(r.error);
+    r.onsuccess = () => {
+      const tx = r.result.transaction('kv', mode), q = fn(tx.objectStore('kv'));
+      tx.oncomplete = () => res(q.result);
+      tx.onerror = () => rej(tx.error);
+    };
+  });
+}
+
+function showFolder() {
+  if (!canWrite) { folderEl.textContent = 'Speichern als Download (Browser ohne Ordnerzugriff)'; document.getElementById('pickDir').hidden = true; return; }
+  folderEl.textContent = dirHandle ? 'Ordner: ' + dirHandle.name : 'kein Projektordner gewählt';
+  folderEl.classList.toggle('ok', !!dirHandle);
+}
+
+async function chooseDir() {
+  const h = await window.showDirectoryPicker({ id: 'cslineups', mode: 'readwrite' });
+  try { await (await h.getDirectoryHandle('data')).getFileHandle('maps.js'); }
+  catch { throw new Error(`„${h.name}“ ist nicht der Projektordner (data/maps.js fehlt).`); }
+  dirHandle = h;
+  try { await kv('readwrite', s => s.put(h, 'dir')); } catch {}
+  showFolder();
+}
+
+async function ensureDir() {
+  if (dirHandle && await dirHandle.queryPermission({ mode: 'readwrite' }) !== 'granted'
+      && await dirHandle.requestPermission({ mode: 'readwrite' }) !== 'granted') dirHandle = null;
+  if (!dirHandle) await chooseDir();
+  return dirHandle;
+}
+
+async function fileAt(path, create) {
+  const parts = path.split('/');
+  let d = dirHandle;
+  for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create });
+  return d.getFileHandle(parts[parts.length - 1], { create });
+}
+async function writeFile(path, data) {
+  const w = await (await fileAt(path, true)).createWritable();
+  await w.write(data); await w.close();
+}
+async function readText(path) {
+  try { return await (await (await fileAt(path, false)).getFile()).text(); } catch { return null; }
+}
+
+/* ---------- data/<map>.js erzeugen ---------- */
+const J = v => JSON.stringify(v);
+function fmtObj(o) { return '{ ' + Object.entries(o).map(([k, v]) => `${k}: ${J(v)}`).join(', ') + ' }'; }
+
+function fmtLineup(l) {
+  const known = ['id', 'map', 'side', 'type', 'title', 'from', 'position', 'lineups', 'result'];
+  const res = Array.isArray(l.result)
+    ? `[\n${l.result.map(r => '      ' + fmtObj(r) + ',').join('\n')}\n    ]`
+    : fmtObj(l.result || { img: '', note: '' });
+  return [
+    '  {',
+    `    id:    ${J(l.id)},`,
+    `    map:   ${J(l.map)},`,
+    `    side:  ${J(l.side)},`,
+    `    type:  ${J(l.type)},`,
+    `    title: ${J(l.title)},`,
+    `    from:  ${J(l.from)},`,
+    `    position: ${fmtObj(l.position || { img: '', note: '' })},`,
+    '    lineups: [',
+    ...(l.lineups || []).map(s => '      ' + fmtObj(s) + ','),
+    '    ],',
+    `    result: ${res},`,
+    // Felder, die der Editor nicht kennt, unverändert mitschreiben
+    ...Object.keys(l).filter(k => !known.includes(k)).map(k => `    ${k}: ${J(l[k])},`),
+    '  },',
+  ].join('\n');
+}
+
+function defaultHeader(map) {
+  const s = mapSlug(map);
+  return `/* ============================================================================
+   ${map.toUpperCase()} · LINEUPS
+   ----------------------------------------------------------------------------
+   Wird vom Editor (editor.html) geschrieben, kann aber auch von Hand gepflegt
+   werden. Bilder liegen unter  images/${s}/<id>/  (position.webp, lineup-N.webp,
+   result.webp, thumb.webp).
+============================================================================ */`;
+}
+
+async function mapFileText(map) {
+  const old = await readText(`data/${mapSlug(map)}.js`);
+  const head = (old && (old.match(/^\s*\/\*[\s\S]*?\*\//) || [])[0]) || defaultHeader(map);
+  const rows = LINEUPS.filter(l => l.map === map);
+  return `${head.trim()}\n\naddLineups([\n\n${rows.map(fmtLineup).join('\n\n')}\n\n]);\n`;
+}
+
+/* ---------- Speichern / Löschen ---------- */
+function setStatus(msg, kind) { statusEl.innerHTML = msg; statusEl.className = 'status' + (kind ? ' ' + kind : ''); }
+
+function validate() {
+  const s = state, errs = [];
+  if (!s.title.trim()) errs.push('Titel fehlt');
+  if (!s.from.trim()) errs.push('Anstell-Position fehlt');
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(s.id)) errs.push('ID nur aus a–z, 0–9 und - bilden');
+  else if (!s.editing && LINEUPS.some(l => l.id === s.id)) errs.push(`ID „${s.id}“ gibt es schon`);
+  if (!s.position.img) errs.push('Position-Bild fehlt');
+  if (!s.lineups.length || s.lineups.some(w => !w.img)) errs.push('Jeder Wurf braucht ein Bild');
+  if (!s.result.length || s.result.some(r => !r.img)) errs.push('Jedes Result braucht ein Bild');
+  return errs;
+}
+
+// Neue Bilder unter images/<map>/<id>/ ablegen; ein Dateiname, den ein behaltenes Bild belegt, wird nicht überschrieben.
+function planImages() {
+  const base = `images/${mapSlug(state.map)}/${state.id}`;
+  const kept = new Set();
+  const slots = [
+    [state.position.img, 'position'],
+    ...state.lineups.map((w, i) => [w.img, 'lineup-' + (i + 1)]),
+    ...state.result.map((r, i) => [r.img, i ? 'result' + (i + 1) : 'result']),
+  ];
+  slots.forEach(([img]) => { if (img && img.path) kept.add(img.path); });
+  const writes = [];
+  for (const [img, name] of slots) {
+    if (!img || !img.blob) continue;
+    let path = `${base}/${name}.webp`;
+    if (kept.has(path)) path = `${base}/${name}-${Date.now().toString(36)}.webp`;
+    kept.add(path);
+    writes.push({ img, path });
+  }
+  return { base, writes };
+}
+
+async function save() {
+  const errs = validate();
+  if (errs.length) { setStatus('Nicht gespeichert: ' + errs.join(' · '), 'err'); return; }
+  const btns = [document.getElementById('save'), document.getElementById('save2')];
+  btns.forEach(b => b.disabled = true);
+  try {
+    if (canWrite) await ensureDir();
+    const { base, writes } = planImages();
+    const firstResult = state.result[0].img;
+    const thumb = firstResult.blob ? await toWebp(firstResult.blob, 480, 0.8) : null;
+
+    // erst Pfade setzen, dann das Lineup in LINEUPS übernehmen und die Map-Datei neu schreiben
+    const pathOf = new Map(writes.map(w => [w.img, w.path]));
+    const entry = toLineup(img => img ? (img.path || pathOf.get(img)) : null);
+    const before = LINEUPS.slice();
+    const idx = LINEUPS.findIndex(l => l.id === state.editing);
+    if (idx >= 0) LINEUPS[idx] = entry; else LINEUPS.push(entry);
+    const text = await mapFileText(state.map).catch(err => { LINEUPS.splice(0, LINEUPS.length, ...before); throw err; });
+
+    if (canWrite) {
+      try {
+        for (const w of writes) await writeFile(w.path, w.img.blob);
+        if (thumb) await writeFile(`${base}/thumb.webp`, thumb);
+        await writeFile(`data/${mapSlug(state.map)}.js`, text);
+      } catch (err) { LINEUPS.splice(0, LINEUPS.length, ...before); throw err; }
+    } else {
+      writes.forEach(w => download(w.img.blob, w.path));
+      if (thumb) download(thumb, `${base}/thumb.webp`);
+      download(new Blob([text], { type: 'text/javascript' }), `data/${mapSlug(state.map)}.js`);
+    }
+
+    // gespeicherte Bilder zählen ab jetzt als vorhandene Dateien
+    for (const w of writes) { URL.revokeObjectURL(w.img.url); delete w.img.blob; delete w.img.url; w.img.path = w.path; }
+    state.editing = state.id;
+    dirty = false;
+    history.replaceState(null, '', '#edit=' + encodeURIComponent(state.id));
+    renderPick(); renderForm();
+    const link = `index.html#${encodeURIComponent(state.map)}/${encodeURIComponent(state.id)}`;
+    setStatus(canWrite
+      ? `Gespeichert in data/${mapSlug(state.map)}.js · <a href="${link}">im Lineup-Buch ansehen</a>`
+      : `Heruntergeladen. Im Dateinamen steht der Zielpfad (__ = Ordner-Trenner), z. B. ${base.replace(/\//g, '__')}__result.webp → ${base}/result.webp.`, 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setStatus('Fehler beim Speichern: ' + esc(err.message), 'err');
+    else setStatus('Abgebrochen – kein Ordner gewählt.', 'err');
+  } finally {
+    btns.forEach(b => b.disabled = false);
+  }
+}
+
+// Fallback ohne Ordnerzugriff: Zielpfad steckt im Dateinamen (images__dust2__id__result.webp)
+function download(blob, path) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = path.replace(/\//g, '__');
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+async function remove() {
+  const l = LINEUPS.find(x => x.id === state.editing); if (!l) return;
+  if (!confirm(`„${l.title}“ aus data/${mapSlug(l.map)}.js entfernen?\nDie Bilder in images/${mapSlug(l.map)}/… bleiben liegen.`)) return;
+  try {
+    if (canWrite) await ensureDir();
+    const before = LINEUPS.slice();
+    LINEUPS.splice(LINEUPS.indexOf(l), 1);
+    try {
+      const text = await mapFileText(l.map);
+      if (canWrite) await writeFile(`data/${mapSlug(l.map)}.js`, text);
+      else download(new Blob([text], { type: 'text/javascript' }), `data/${mapSlug(l.map)}.js`);
+    } catch (err) { LINEUPS.splice(0, LINEUPS.length, ...before); throw err; }
+    load(blank(l.map));
+    setStatus(`„${esc(l.title)}“ gelöscht.`, 'ok');
+  } catch (err) {
+    setStatus('Fehler beim Löschen: ' + esc(err.message), 'err');
+  }
+}
+
+/* ---------- Start ---------- */
+function load(s) {
+  state = s;
+  if (!state.editing) state.id = suggestId();
+  dirty = false;
+  history.replaceState(null, '', state.editing ? '#edit=' + encodeURIComponent(state.editing) : '#map=' + encodeURIComponent(state.map));
+  document.getElementById('backLink').href = 'index.html#' + encodeURIComponent(state.map) + (state.editing ? '/' + encodeURIComponent(state.editing) : '');
+  renderPick(); renderForm(); setStatus('');
+}
+
+pickEl.addEventListener('change', () => {
+  if (dirty && !confirm('Ungespeicherte Änderungen verwerfen?')) { pickEl.value = state.editing || ''; return; }
+  const l = LINEUPS.find(x => x.id === pickEl.value);
+  load(l ? fromLineup(l) : blank(state.map));
+});
+document.getElementById('save').addEventListener('click', save);
+document.getElementById('save2').addEventListener('click', save);
+delBtn.addEventListener('click', remove);
+document.getElementById('pickDir').addEventListener('click', () =>
+  chooseDir().catch(err => { if (err.name !== 'AbortError') setStatus(esc(err.message), 'err'); }));
+document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save(); } });
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+attachLens(preview);
+
+loadLineups(async () => {
+  if (canWrite) { try { dirHandle = (await kv('readonly', s => s.get('dir'))) || null; } catch {} }
+  showFolder();
+  const h = new URLSearchParams(location.hash.slice(1));
+  const l = LINEUPS.find(x => x.id === h.get('edit'));
+  load(l ? fromLineup(l) : blank(MAPS.some(m => m.name === h.get('map')) ? h.get('map') : undefined));
+});
+</script>
+</body>
+</html>

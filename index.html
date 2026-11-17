@@ -7,172 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<style>
-:root{
-  --void:#0D0F12; --panel:#16191E; --panel-2:#1D2127; --edge:#2A2F37;
-  --chalk:#E8EAED; --sand:#9BA3AE; --mute:#646C78; --hud:#E9A038; --t:#D4A03C; --ct:#6FA0D6;
-  --display:"Oswald","Arial Narrow",system-ui,sans-serif;
-  --body:"Barlow","Segoe UI",system-ui,sans-serif;
-  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
-}
-*{box-sizing:border-box}
-html,body{margin:0}
-body{
-  background:var(--void); color:var(--chalk); font-family:var(--body);
-  font-size:16px; line-height:1.55; -webkit-font-smoothing:antialiased;
-  background-image:radial-gradient(circle at 20% -10%,rgba(233,160,56,.06),transparent 55%);
-  background-attachment:fixed;
-}
-.wrap{max-width:1180px;margin:0 auto;padding:0 22px 90px}
-
-/* ---------- Kopf ---------- */
-.masthead{padding:44px 0 22px;border-bottom:1px solid var(--edge)}
-.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--hud);margin:0 0 10px}
-.masthead h1{
-  font-family:var(--display);font-weight:600;font-size:clamp(38px,7vw,64px);
-  letter-spacing:.02em;text-transform:uppercase;margin:0;line-height:.95;
-}
-.masthead p{margin:12px 0 0;color:var(--sand);max-width:52ch}
-
-/* ---------- Map-Galerie (Startseite) ---------- */
-.maps{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:18px;margin-top:34px}
-.map-card{
-  position:relative;display:block;text-align:left;cursor:pointer;
-  border:1px solid var(--edge);background:var(--panel);color:inherit;
-  padding:0;overflow:hidden;border-radius:2px;transition:.15s;
-}
-.map-card:hover{border-color:var(--sand);transform:translateY(-2px)}
-.map-thumb{aspect-ratio:16/10;width:100%;background:#0A0C0F;position:relative;overflow:hidden}
-.map-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.map-thumb.missing{background:
-  repeating-linear-gradient(135deg,#171B21,#171B21 12px,#1B2027 12px,#1B2027 24px)}
-.map-thumb.missing::after{
-  content:attr(data-map);position:absolute;inset:0;display:grid;place-items:center;
-  font-family:var(--display);font-weight:600;font-size:28px;letter-spacing:.05em;
-  text-transform:uppercase;color:var(--sand);opacity:.55;
-}
-.map-meta{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:14px 16px;border-top:1px solid var(--edge)}
-.map-meta h2{font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.03em;font-size:22px;margin:0}
-.map-count{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--hud)}
-.map-count.zero{color:var(--mute)}
-
-/* ---------- Filter-/Nav-Leiste ---------- */
-.bar{
-  position:sticky;top:0;z-index:40;display:flex;gap:10px;flex-wrap:wrap;align-items:center;
-  padding:14px 0;background:rgba(13,15,18,.85);backdrop-filter:blur(8px);
-  border-bottom:1px solid var(--edge);margin-bottom:34px;
-}
-.back{
-  font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
-  background:transparent;color:var(--hud);border:1px solid var(--edge);
-  padding:7px 14px;cursor:pointer;border-radius:2px;transition:.15s;
-}
-.back:hover{border-color:var(--hud)}
-.bar-title{font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.04em;font-size:20px;margin:0}
-.chip{
-  font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
-  background:transparent;color:var(--sand);border:1px solid var(--edge);
-  padding:7px 14px;cursor:pointer;border-radius:2px;transition:.15s;
-}
-.chip:hover{color:var(--chalk);border-color:var(--sand)}
-.chip[aria-pressed="true"]{background:var(--hud);border-color:var(--hud);color:#121418;font-weight:700}
-.search{
-  margin-left:auto;background:var(--panel);border:1px solid var(--edge);color:var(--chalk);
-  font-family:var(--body);font-size:14px;padding:8px 12px;border-radius:2px;min-width:200px;
-}
-.search::placeholder{color:var(--mute)}
-.search:focus,.chip:focus-visible,button:focus-visible{outline:2px solid var(--hud);outline-offset:2px}
-
-/* ---------- Kompakte Lineup-Liste (Zwischenschritt) ---------- */
-.lu-list{display:flex;flex-direction:column;gap:12px}
-.lu-item{
-  display:flex;align-items:stretch;text-align:left;cursor:pointer;width:100%;
-  border:1px solid var(--edge);background:var(--panel);color:inherit;
-  padding:0;overflow:hidden;border-radius:2px;transition:.15s;min-height:104px;
-}
-.lu-item:hover{border-color:var(--sand);transform:translateY(-1px)}
-.lu-thumb{width:170px;flex:none;background:#0A0C0F;position:relative;overflow:hidden}
-.lu-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.lu-thumb.missing::after{
-  content:"kein Result";position:absolute;inset:0;display:grid;place-items:center;
-  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);
-  background:repeating-linear-gradient(135deg,#12151A,#12151A 10px,#161A20 10px,#161A20 20px);
-}
-.lu-info{padding:14px 20px;display:flex;flex-direction:column;justify-content:center;gap:9px;min-width:0}
-.lu-info h3{font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.02em;font-size:22px;margin:0}
-.lu-tags{display:flex;gap:8px;flex-wrap:wrap}
-.lu-sub{color:var(--sand);font-size:13.5px;margin:0}
-.lu-arrow{margin-left:auto;align-self:center;padding:0 22px;color:var(--sand);font-size:22px;flex:none}
-.lu-item:hover .lu-arrow{color:var(--hud)}
-
-/* ---------- Lineup-Karte ---------- */
-.card{border:1px solid var(--edge);background:var(--panel);margin-bottom:34px}
-.card-head{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:20px 24px;border-bottom:1px solid var(--edge)}
-.card-head h2{font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.03em;font-size:26px;margin:0}
-.meta{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
-.tag{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;padding:4px 9px;border:1px solid var(--edge);color:var(--sand);border-radius:2px}
-.tag.side-T{color:var(--t);border-color:rgba(212,160,60,.45)}
-.tag.side-CT{color:var(--ct);border-color:rgba(111,160,214,.45)}
-.tag.map{color:var(--chalk)}
-
-.body{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:0}
-.col{padding:24px}
-.col + .col{border-left:1px solid var(--edge)}
-.col-label{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--hud);margin:0 0 14px}
-.note{color:var(--sand);font-size:14.5px;margin:12px 0 0}
-
-/* ---------- Bilder + Lupe (Signature) ---------- */
-.shot{position:relative;display:block;width:100%;border:1px solid var(--edge);cursor:zoom-in;overflow:hidden;background:#0A0C0F;min-height:120px}
-.shot img{display:block;width:100%;height:auto}
-.shot.missing{cursor:default}
-.shot.missing::after{
-  content:"Screenshot fehlt";position:absolute;inset:0;display:grid;place-items:center;
-  font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);
-  background:repeating-linear-gradient(135deg,#12151A,#12151A 12px,#161A20 12px,#161A20 24px);
-}
-.lens{
-  position:absolute;width:190px;height:190px;border-radius:50%;pointer-events:none;
-  border:2px solid var(--hud);box-shadow:0 0 0 1px rgba(0,0,0,.7),0 10px 30px rgba(0,0,0,.6);
-  background-repeat:no-repeat;opacity:0;transition:opacity .12s;
-}
-.shot:hover .lens{opacity:1}
-.shot.missing:hover .lens{opacity:0}
-.hint{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin:8px 0 0}
-
-/* ---------- Wurf-Schritte ---------- */
-.step + .step{margin-top:26px;padding-top:26px;border-top:1px dashed var(--edge)}
-.step-head{display:flex;align-items:center;gap:10px;margin:0 0 12px}
-.step-num{font-family:var(--display);font-size:15px;font-weight:600;color:#121418;background:var(--hud);width:24px;height:24px;display:grid;place-items:center;border-radius:2px;flex:none}
-.step-head h3{font-family:var(--display);font-weight:400;text-transform:uppercase;letter-spacing:.06em;font-size:17px;margin:0}
-.inputs{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:12px 0 0}
-.key{
-  font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;
-  background:linear-gradient(#262B33,#1A1E24);color:var(--chalk);
-  border:1px solid #3A414C;border-bottom-width:3px;border-radius:3px;padding:5px 10px;
-}
-.key.stance{color:var(--hud);border-color:#5A4326}
-.plus{font-family:var(--mono);font-size:12px;color:var(--sand)}
-
-/* ---------- Lightbox ---------- */
-.lb{position:fixed;inset:0;background:rgba(6,7,9,.95);display:none;place-items:center;z-index:100;padding:24px;cursor:zoom-out}
-.lb.open{display:grid}
-.lb img{max-width:100%;max-height:88vh;border:1px solid var(--edge)}
-.lb-cap{position:absolute;bottom:22px;left:0;right:0;text-align:center;font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--sand)}
-
-.empty{border:1px dashed var(--edge);padding:40px;text-align:center;color:var(--sand)}
-footer{border-top:1px solid var(--edge);margin-top:40px;padding-top:18px;font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
-
-@media (max-width:860px){
-  .body{grid-template-columns:1fr}
-  .col + .col{border-left:0;border-top:1px solid var(--edge)}
-  .lens{display:none}
-  .search{margin-left:0;width:100%}
-  .lu-item{flex-direction:column;min-height:0}
-  .lu-thumb{width:100%;aspect-ratio:16/9}
-  .lu-arrow{display:none}
-}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
-</style>
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div class="wrap">
@@ -193,6 +28,7 @@ footer{border-top:1px solid var(--edge);margin-top:40px;padding-top:18px;font-fa
       <button class="back" id="backToMaps">&larr; Maps</button>
       <h2 class="bar-title" id="listTitle"></h2>
       <input class="search" id="q" type="search" placeholder="Suchen: Ziel, Position…" aria-label="Lineups durchsuchen">
+      <a class="back" id="addLink" href="editor.html">+ Lineup</a>
     </nav>
     <div class="lu-list" id="luList"></div>
     <footer id="count"></footer>
@@ -203,6 +39,7 @@ footer{border-top:1px solid var(--edge);margin-top:40px;padding-top:18px;font-fa
     <nav class="bar" aria-label="Navigation">
       <button class="back" id="backToList">&larr; <span id="detailBackLabel"></span></button>
       <h2 class="bar-title" id="detailTitle"></h2>
+      <a class="back bar-end" id="editLink" href="editor.html">Bearbeiten</a>
     </nav>
     <main id="detail"></main>
   </section>
@@ -211,6 +48,7 @@ footer{border-top:1px solid var(--edge);margin-top:40px;padding-top:18px;font-fa
 <div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Bild groß"><img id="lb-img" alt=""><p class="lb-cap">Klicken oder Esc zum Schließen</p></div>
 
 <script src="data/maps.js"></script>
+<script src="js/common.js"></script>
 <script>
 const mapView     = document.getElementById('mapView');
 const listView    = document.getElementById('listView');
@@ -225,32 +63,17 @@ const listTitle   = document.getElementById('listTitle');
 const detailTitle = document.getElementById('detailTitle');
 const detailBackLabel = document.getElementById('detailBackLabel');
 const lead        = document.getElementById('lead');
+const addLink     = document.getElementById('addLink');
+const editLink    = document.getElementById('editLink');
 
 let activeMap = null;   // aktuell gewählte Map (Liste)
 let activeId  = null;   // aktuell gewähltes Lineup (Detail)
 
-const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const countFor = name => LINEUPS.filter(l => l.map === name).length;
-
-// result kann ein Objekt {img,note} ODER ein Array [{img,note},…] sein → immer als Array.
-const asResults = l => Array.isArray(l.result) ? l.result.filter(Boolean) : (l.result ? [l.result] : []);
-
-// stance wird als fester Wert gespeichert und erst hier übersetzt; Unbekanntes bleibt wie es ist.
-const STANCES = { stand: 'Stehen', crouch: 'Ducken', jump: 'Springen', run: 'Laufen', walk: 'Gehen' };
-const stanceLabel = s => STANCES[s] || s;
-
-// Bricht ein Bild, wird das Element zur "fehlt"-Kachel (kein kaputtes Icon).
-const onErr = "this.style.display='none';this.parentNode.classList.add('missing')";
 
 // Listen-Vorschau: <lineup>/thumb.webp, fällt bei Fehlen auf das volle Result-Bild zurück.
 const thumbOf = src => src.replace(/[^/]+$/, 'thumb.webp');
 const onThumbErr = `if(this.dataset.full){this.src=this.dataset.full;delete this.dataset.full}else{${onErr}}`;
-
-// Zoombares Bild (Detailansicht)
-function shot(src, cap) {
-  if (!src) return `<div class="shot missing"></div>`;
-  return `<div class="shot" data-src="${esc(src)}"><img src="${esc(src)}" alt="${esc(cap)}" loading="lazy" onerror="${onErr}"><div class="lens"></div></div>`;
-}
 
 /* ---------- 1) Startseite: Map-Galerie ---------- */
 function renderMaps() {
@@ -310,52 +133,6 @@ function renderList() {
 }
 
 /* ---------- 3) Detailansicht: ein Lineup ---------- */
-function lineupCard(l) {
-  return `
-    <article class="card">
-      <div class="card-head">
-        <h2>${esc(l.title)}</h2>
-        <div class="meta">
-          <span class="tag map">${esc(l.map)}</span>
-          <span class="tag side-${esc(l.side)}">${esc(l.side)}-Seite</span>
-          <span class="tag">${esc(l.type)}</span>
-        </div>
-      </div>
-      <div class="body">
-        <section class="col">
-          <p class="col-label">Position — ${esc(l.from)}</p>
-          ${shot(l.position && l.position.img, 'Position: ' + l.from)}
-          <p class="hint">Hover zum Zoomen · Klick für groß</p>
-          ${l.position && l.position.note ? `<p class="note">${esc(l.position.note)}</p>` : ''}
-        </section>
-        <section class="col">
-          <p class="col-label">Fadenkreuz &amp; Wurf</p>
-          ${(l.lineups || []).map((s, i) => `
-            <div class="step">
-              <div class="step-head"><span class="step-num">${i + 1}</span><h3>${esc(s.label || ('Wurf ' + (i + 1)))}</h3></div>
-              ${shot(s.img, s.label || ('Wurf ' + (i + 1)))}
-              ${(s.stance || (s.input && s.input.length)) ? `<div class="inputs">
-                ${s.stance ? `<span class="key stance">${esc(stanceLabel(s.stance))}</span>${s.input && s.input.length ? '<span class="plus">+</span>' : ''}` : ''}
-                ${(s.input || []).map(k => `<span class="key">${esc(k)}</span>`).join('<span class="plus">+</span>')}
-              </div>` : ''}
-              ${s.note ? `<p class="note">${esc(s.note)}</p>` : ''}
-            </div>`).join('')}
-        </section>
-        <section class="col">
-          <p class="col-label">Result</p>
-          ${asResults(l).length
-            ? asResults(l).map((r, i) => `
-            <div class="step">
-              ${asResults(l).length > 1 ? `<div class="step-head"><span class="step-num">${i + 1}</span><h3>Result ${i + 1}</h3></div>` : ''}
-              ${shot(r.img, 'Result ' + (i + 1) + ': ' + l.title)}
-              ${r.note ? `<p class="note">${esc(r.note)}</p>` : ''}
-            </div>`).join('')
-            : shot(null, 'Result')}
-        </section>
-      </div>
-    </article>`;
-}
-
 function renderDetail() {
   const l = LINEUPS.find(x => x.id === activeId);
   if (!l) { showList(activeMap); return; }
@@ -378,6 +155,7 @@ function showList(name) {
   mapView.hidden = true; detailView.hidden = true; listView.hidden = false;
   listTitle.textContent = name;
   lead.textContent = 'Lineup wählen, um Position, Würfe und Result im Detail zu sehen.';
+  addLink.href = 'editor.html#map=' + encodeURIComponent(name);
   q.value = '';
   renderList();
   setHash(encodeURIComponent(name));
@@ -390,6 +168,7 @@ function showDetail(id) {
   mapView.hidden = true; listView.hidden = true; detailView.hidden = false;
   detailBackLabel.textContent = l.map;
   lead.textContent = 'Mit der Maus über ein Bild fahren zoomt den Ausschnitt, Klick öffnet es groß.';
+  editLink.href = 'editor.html#edit=' + encodeURIComponent(id);
   renderDetail();
   setHash(encodeURIComponent(l.map) + '/' + encodeURIComponent(id));
   window.scrollTo(0, 0);
@@ -408,18 +187,7 @@ document.getElementById('backToList').addEventListener('click', () => showList(a
 q.addEventListener('input', renderList);
 
 // Lupe (nur Detailansicht)
-detail.addEventListener('mousemove', e => {
-  const el = e.target.closest('.shot'); if (!el || el.classList.contains('missing')) return;
-  const img = el.querySelector('img'), lens = el.querySelector('.lens');
-  if (!img || !lens) return;
-  const r = el.getBoundingClientRect(), z = 2.6, size = 190;
-  const x = e.clientX - r.left, y = e.clientY - r.top;
-  lens.style.backgroundImage = `url("${img.src}")`;
-  lens.style.backgroundSize = (r.width * z) + 'px ' + (r.height * z) + 'px';
-  lens.style.backgroundPosition = `${-x * z + size / 2}px ${-y * z + size / 2}px`;
-  lens.style.left = (x - size / 2) + 'px';
-  lens.style.top = (y - size / 2) + 'px';
-});
+attachLens(detail);
 
 // Lightbox (nur Detailansicht)
 detail.addEventListener('click', e => {
@@ -429,7 +197,7 @@ detail.addEventListener('click', e => {
 lb.addEventListener('click', () => lb.classList.remove('open'));
 document.addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('open'); });
 
-// Start: pro Map die Datei data/<slug>.js laden, dann rendern + routen.
+// Start: Daten aller Maps laden, dann rendern + routen.
 function boot() {
   renderMaps();
   const raw = location.hash.slice(1);
@@ -441,15 +209,7 @@ function boot() {
   else showMaps();
 }
 
-let pending = MAPS.length;
-if (!pending) boot();
-else MAPS.forEach(m => {
-  const s = document.createElement('script');
-  s.src = 'data/' + mapSlug(m.name) + '.js';
-  // Fehlt eine Map-Datei (Map noch ohne Lineups), einfach überspringen.
-  s.onload = s.onerror = () => { if (--pending === 0) boot(); };
-  document.head.appendChild(s);
-});
+loadLineups(boot);
 </script>
 </body>
 </html>
