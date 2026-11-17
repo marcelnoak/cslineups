@@ -1,0 +1,7 @@
+# Windows / Editor
+Thumbs.db
+desktop.ini
+.vscode/
+
+# Rohe Screenshots nicht einchecken – nur .webp
+*.png
