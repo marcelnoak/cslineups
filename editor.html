@@ -70,9 +70,17 @@ textarea.in{resize:vertical;min-height:40px}
 }
 .primary:hover{filter:brightness(1.08)}
 .primary:disabled{opacity:.5;cursor:default}
-.status{font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--sand);margin:0;min-height:1.4em}
-.status.ok{color:#5BC17F}
-.status.err{color:#F07178}
+/* Statusmeldung schwebt unten im Bild, damit sie von überall sichtbar ist */
+.status{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;
+  width:max-content;max-width:min(760px,calc(100% - 32px));
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.03em;line-height:1.5;color:var(--chalk);margin:0;
+  background:var(--panel-2);border:1px solid var(--edge);border-left-width:4px;padding:10px 16px;border-radius:2px;
+  box-shadow:0 12px 32px rgba(0,0,0,.55);
+}
+.status:empty{display:none}
+.status.ok{border-left-color:#5BC17F}
+.status.err{border-left-color:#F07178}
 .status a{color:var(--hud)}
 .folder{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--mute)}
 .folder.ok{color:#5BC17F}
@@ -655,7 +663,14 @@ document.getElementById('save').addEventListener('click', save);
 document.getElementById('save2').addEventListener('click', save);
 delBtn.addEventListener('click', remove);
 document.getElementById('pickDir').addEventListener('click', () =>
-  chooseDir().catch(err => { if (err.name !== 'AbortError') setStatus(esc(err.message), 'err'); }));
+  chooseDir()
+    .then(() => setStatus(`Projektordner verbunden: ${esc(dirHandle.name)} – Speichern schreibt jetzt direkt dorthin.`, 'ok'))
+    .catch(err => {
+      console.error(err);
+      setStatus(err.name === 'AbortError'
+        ? 'Kein Ordner verbunden: Auswahl oder Schreib-Erlaubnis wurde abgebrochen. Bitte erneut wählen und „Bearbeiten zulassen“ bestätigen.'
+        : esc(err.message), 'err');
+    }));
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save(); } });
 window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
 attachLens(preview);
