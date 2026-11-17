@@ -149,6 +149,7 @@ const KEYS  = ['W', 'A', 'S', 'D', 'SHIFT', 'CTRL', 'SPACE', 'MOUSE1', 'MOUSE2']
 let state = null;
 let dirty = false;
 let dirHandle = null;
+let pendingDir = null;    // gewählter Ordner, für den der Schreibzugriff noch fehlt
 let pasteTarget = null;   // zuletzt fokussierter Bild-Slot (für Strg+V)
 let fileTarget = null;    // Slot, für den der Datei-Dialog offen ist
 let radarMode = 'land';   // welcher Radar-Punkt beim nächsten Klick gesetzt wird: 'land' | 'throw'
@@ -492,8 +493,19 @@ document.addEventListener('paste', e => {
   if (key) takeImage(key, item.getAsFile());
 });
 
-/* ---------- Projektordner (File System Access API) ---------- */
+/* ---------- Speichern: lokaler Server (tools/serve.py) oder Projektordner (File System Access API) ---------- */
 const canWrite = 'showDirectoryPicker' in window;
+// Eingebettete Browser (z. B. das Browser-Fenster der Claude-App) zeigen den Ordner-Dialog, verweigern aber das Schreiben.
+const inAppBrowser = / Claude\/| Electron\//.test(navigator.userAgent);
+
+// Läuft tools/serve.py, speichert der Editor darüber – ganz ohne Ordnerauswahl und Browser-Erlaubnis.
+let serverMode = false;
+async function detectServer() {
+  try {
+    const r = await fetch('api/ping', { cache: 'no-store' });
+    serverMode = r.ok && (await r.json()).ok === true;
+  } catch { serverMode = false; }
+}
 
 // Den gewählten Ordner im Browser merken, damit er nicht jedes Mal neu gewählt werden muss.
 function kv(mode, fn) {
@@ -510,21 +522,50 @@ function kv(mode, fn) {
 }
 
 function showFolder() {
+  if (serverMode) {
+    folderEl.textContent = 'Speichert über lokalen Server';
+    folderEl.classList.add('ok');
+    document.getElementById('pickDir').hidden = true;
+    return;
+  }
   if (!canWrite) { folderEl.textContent = 'Speichern als Download (Browser ohne Ordnerzugriff)'; document.getElementById('pickDir').hidden = true; return; }
-  folderEl.textContent = dirHandle ? 'Ordner: ' + dirHandle.name : 'kein Projektordner gewählt';
+  folderEl.textContent = dirHandle ? 'Ordner: ' + dirHandle.name
+    : pendingDir ? `Ordner: ${pendingDir.name} (noch ohne Schreibzugriff)`
+    : inAppBrowser ? 'Zum Speichern in Chrome oder Edge öffnen' : 'kein Projektordner gewählt';
+  document.getElementById('pickDir').textContent = pendingDir ? 'Schreibzugriff erlauben' : 'Projektordner wählen';
   folderEl.classList.toggle('ok', !!dirHandle);
 }
 
+// Erst nur den Ordner wählen, dann getrennt um Schreibzugriff bitten: so ist klar, welcher Schritt scheitert.
 async function chooseDir() {
-  const h = await window.showDirectoryPicker({ id: 'cslineups', mode: 'readwrite' });
-  try { await (await h.getDirectoryHandle('data')).getFileHandle('maps.js'); }
-  catch { throw new Error(`„${h.name}“ ist nicht der Projektordner (data/maps.js fehlt).`); }
+  const h = pendingDir || await window.showDirectoryPicker({ id: 'cslineups' });
+  if (!pendingDir) {
+    try { await (await h.getDirectoryHandle('data')).getFileHandle('maps.js'); }
+    catch { throw new Error(`„${h.name}“ ist nicht der Projektordner (data/maps.js fehlt).`); }
+    pendingDir = h;
+  }
+  let perm = await h.queryPermission({ mode: 'readwrite' });
+  if (perm !== 'granted') {
+    try { perm = await h.requestPermission({ mode: 'readwrite' }); }
+    catch (err) {
+      if (err.name !== 'SecurityError') throw err;
+      // Manche Browser wollen für die Erlaubnis einen eigenen Klick
+      showFolder();
+      throw Object.assign(new Error('Ordner gewählt – jetzt noch auf „Schreibzugriff erlauben“ klicken.'), { name: 'NeedsClick' });
+    }
+  }
+  if (perm !== 'granted') {
+    pendingDir = null; showFolder();
+    throw Object.assign(new Error('Schreibzugriff verweigert. Falls keine Abfrage kam: Schloss-Symbol links in der Adresszeile → Website-Einstellungen → „Dateien bearbeiten“ auf „Zulassen“ stellen, Seite neu laden und erneut wählen.'), { name: 'Denied' });
+  }
+  pendingDir = null;
   dirHandle = h;
-  try { await kv('readwrite', s => s.put(h, 'dir')); } catch {}
   showFolder();
+  kv('readwrite', s => s.put(h, 'dir')).catch(() => {});   // merken, ohne darauf zu warten
 }
 
 async function ensureDir() {
+  if (serverMode) return null;
   if (dirHandle && await dirHandle.queryPermission({ mode: 'readwrite' }) !== 'granted'
       && await dirHandle.requestPermission({ mode: 'readwrite' }) !== 'granted') dirHandle = null;
   if (!dirHandle) await chooseDir();
@@ -538,10 +579,18 @@ async function fileAt(path, create) {
   return d.getFileHandle(parts[parts.length - 1], { create });
 }
 async function writeFile(path, data) {
+  if (serverMode) {
+    const r = await fetch('api/write?path=' + encodeURIComponent(path), { method: 'POST', headers: { 'X-Lineup-Editor': '1' }, body: data });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Server antwortet mit ${r.status}`);
+    return;
+  }
   const w = await (await fileAt(path, true)).createWritable();
   await w.write(data); await w.close();
 }
 async function readText(path) {
+  if (serverMode) {
+    try { const r = await fetch(path, { cache: 'no-store' }); return r.ok ? await r.text() : null; } catch { return null; }
+  }
   try { return await (await (await fileAt(path, false)).getFile()).text(); } catch { return null; }
 }
 
@@ -648,7 +697,7 @@ async function save() {
     if (idx >= 0) LINEUPS[idx] = entry; else LINEUPS.push(entry);
     const text = await mapFileText(state.map).catch(err => { LINEUPS.splice(0, LINEUPS.length, ...before); throw err; });
 
-    if (canWrite) {
+    if (serverMode || canWrite) {
       try {
         for (const w of writes) await writeFile(w.path, w.img.blob);
         if (thumb) await writeFile(`${base}/thumb.webp`, thumb);
@@ -667,7 +716,7 @@ async function save() {
     history.replaceState(null, '', '#edit=' + encodeURIComponent(state.id));
     renderPick(); renderForm();
     const link = `index.html#${encodeURIComponent(state.map)}/${encodeURIComponent(state.id)}`;
-    setStatus(canWrite
+    setStatus(serverMode || canWrite
       ? `Gespeichert in data/${mapSlug(state.map)}.js · <a href="${link}">im Lineup-Buch ansehen</a>`
       : `Heruntergeladen. Im Dateinamen steht der Zielpfad (__ = Ordner-Trenner), z. B. ${base.replace(/\//g, '__')}__result.webp → ${base}/result.webp.`, 'ok');
     return true;
@@ -698,7 +747,7 @@ async function remove() {
     LINEUPS.splice(LINEUPS.indexOf(l), 1);
     try {
       const text = await mapFileText(l.map);
-      if (canWrite) await writeFile(`data/${mapSlug(l.map)}.js`, text);
+      if (serverMode || canWrite) await writeFile(`data/${mapSlug(l.map)}.js`, text);
       else download(new Blob([text], { type: 'text/javascript' }), `data/${mapSlug(l.map)}.js`);
     } catch (err) { LINEUPS.splice(0, LINEUPS.length, ...before); throw err; }
     load(blank(l.map));
@@ -749,9 +798,10 @@ document.getElementById('pickDir').addEventListener('click', () =>
     .then(() => setStatus(`Projektordner verbunden: ${esc(dirHandle.name)} – Speichern schreibt jetzt direkt dorthin.`, 'ok'))
     .catch(err => {
       console.error(err);
-      setStatus(err.name === 'AbortError'
-        ? 'Kein Ordner verbunden: Auswahl oder Schreib-Erlaubnis wurde abgebrochen. Bitte erneut wählen und „Bearbeiten zulassen“ bestätigen.'
-        : esc(err.message), 'err');
+      if (err.name === 'NeedsClick') { setStatus(esc(err.message)); return; }
+      setStatus(err.name !== 'AbortError' ? esc(err.message)
+        : inAppBrowser ? 'Kein Ordner verbunden: Der eingebaute Browser der Claude-App erlaubt keinen Schreibzugriff. Bitte den Editor in Chrome oder Edge öffnen.'
+        : 'Ordnerauswahl abgebrochen – im Dialog den Ordner cslineups markieren und auf „Ordner auswählen“ klicken.', 'err');
     }));
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save(); } });
 window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
@@ -759,7 +809,8 @@ attachLens(preview);
 attachLens(formEl);
 
 loadLineups(async () => {
-  if (canWrite) { try { dirHandle = (await kv('readonly', s => s.get('dir'))) || null; } catch {} }
+  await detectServer();
+  if (!serverMode && canWrite) { try { dirHandle = (await kv('readonly', s => s.get('dir'))) || null; } catch {} }
   showFolder();
   const h = new URLSearchParams(location.hash.slice(1));
   // #fill=<Map>: direkt mit dem ersten Lineup ohne Landepunkt starten
