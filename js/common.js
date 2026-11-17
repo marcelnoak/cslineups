@@ -14,6 +14,19 @@ const asResults = l => Array.isArray(l.result) ? l.result.filter(Boolean) : (l.r
 const STANCES = { stand: 'Stehen', crouch: 'Ducken', jump: 'Springen', run: 'Laufen', walk: 'Gehen' };
 const stanceLabel = s => STANCES[s] || s;
 
+// Radar: Punkte (landAt/throwAt) sind relative Koordinaten 0–1 auf dem Radarbild der Map.
+const TYPE_COLORS = { Smoke: '#D0D7DE', Flash: '#F5D547', Molotov: '#F0883E', HE: '#F85149', Decoy: '#8B949E' };
+const typeColor = t => TYPE_COLORS[t] || '#9BA3AE';
+const radarOf = name => (MAPS.find(m => m.name === name) || {}).radar || null;
+const pct = v => (v * 100).toFixed(2) + '%';
+
+// Gestrichelte Linie Wurfposition → Landepunkt (SVG mit viewBox 0 0 100 100)
+function throwLines(items) {
+  return items.filter(l => l.landAt && l.throwAt).map(l => `
+    <line x1="${l.throwAt.x * 100}" y1="${l.throwAt.y * 100}" x2="${l.landAt.x * 100}" y2="${l.landAt.y * 100}"/>
+    <circle class="from" cx="${l.throwAt.x * 100}" cy="${l.throwAt.y * 100}" r="1"/>`).join('');
+}
+
 // Bricht ein Bild, wird das Element zur "fehlt"-Kachel (kein kaputtes Icon).
 const onErr = "this.style.display='none';this.parentNode.classList.add('missing')";
 

@@ -27,10 +27,20 @@
     <nav class="bar" aria-label="Navigation">
       <button class="back" id="backToMaps">&larr; Maps</button>
       <h2 class="bar-title" id="listTitle"></h2>
+      <div class="seg" id="modeSeg" role="group" aria-label="Ansicht">
+        <button class="chip" data-mode="list">Liste</button>
+        <button class="chip" data-mode="radar">Radar</button>
+      </div>
       <input class="search" id="q" type="search" placeholder="Suchen: Ziel, Position…" aria-label="Lineups durchsuchen">
       <a class="back" id="addLink" href="editor.html">+ Lineup</a>
     </nav>
+    <div class="filters" id="filters"></div>
     <div class="lu-list" id="luList"></div>
+    <div id="radarView" hidden>
+      <div class="radar" id="radar"></div>
+      <div class="legend"><span><i style="background:#D0D7DE"></i>Smoke</span><span><i style="background:#F5D547"></i>Flash</span><span><i style="background:#F0883E"></i>Molotov</span><span><i style="background:#F85149"></i>HE</span><span><i style="background:var(--hud)"></i>gemischt</span></div>
+      <p class="radar-note" id="radarNote"></p>
+    </div>
     <footer id="count"></footer>
   </section>
 
@@ -65,6 +75,11 @@ const detailBackLabel = document.getElementById('detailBackLabel');
 const lead        = document.getElementById('lead');
 const addLink     = document.getElementById('addLink');
 const editLink    = document.getElementById('editLink');
+const modeSeg     = document.getElementById('modeSeg');
+const filtersEl   = document.getElementById('filters');
+const radarView   = document.getElementById('radarView');
+const radarEl     = document.getElementById('radar');
+const radarNote   = document.getElementById('radarNote');
 
 // Editor-Links nur lokal (localhost oder Doppelklick auf die Datei); die öffentliche Seite hat keinen Editor.
 const isLocal = ['localhost', '127.0.0.1', ''].includes(location.hostname);
@@ -72,6 +87,9 @@ addLink.hidden = editLink.hidden = !isLocal;
 
 let activeMap = null;   // aktuell gewählte Map (Liste)
 let activeId  = null;   // aktuell gewähltes Lineup (Detail)
+let listMode  = 'list'; // 'list' | 'radar' – bleibt beim Zurückkehren aus der Detailansicht erhalten
+let sideFilter = '', typeFilter = '';
+let radarClusters = [], openCluster = -1;
 
 const countFor = name => LINEUPS.filter(l => l.map === name).length;
 
@@ -103,12 +121,37 @@ function renderMaps() {
 }
 
 /* ---------- 2) Zwischenschritt: kompakte Liste einer Map ---------- */
-function renderList() {
+// Suche + Seiten-/Typ-Filter gelten für Liste und Radar gleichermaßen.
+function filtered() {
   const term = q.value.trim().toLowerCase();
-  const rows = LINEUPS.filter(l =>
+  return LINEUPS.filter(l =>
     l.map === activeMap &&
+    (!sideFilter || l.side === sideFilter) &&
+    (!typeFilter || l.type === typeFilter) &&
     (!term || (l.title + ' ' + l.from + ' ' + l.type).toLowerCase().includes(term))
   );
+}
+
+function renderFilters() {
+  const types = [...new Set(LINEUPS.filter(l => l.map === activeMap).map(l => l.type))];
+  const chips = (kind, cur, vals) => vals.map(([v, t]) =>
+    `<button class="chip" data-f="${kind}" data-v="${esc(v)}" aria-pressed="${cur === v}">${esc(t)}</button>`).join('');
+  filtersEl.innerHTML =
+    `<div class="seg">${chips('side', sideFilter, [['', 'Alle Seiten'], ['T', 'T'], ['CT', 'CT']])}</div>` +
+    `<div class="seg">${chips('type', typeFilter, [['', 'Alle Typen'], ...types.map(t => [t, t])])}</div>`;
+}
+
+function renderView() {
+  const radar = listMode === 'radar';
+  luList.hidden = radar; radarView.hidden = !radar;
+  modeSeg.querySelectorAll('.chip').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === listMode));
+  const rows = filtered();
+  if (radar) renderRadar(rows); else renderList(rows);
+  document.getElementById('count').textContent =
+    rows.length + (rows.length === 1 ? ' Lineup' : ' Lineups') + ' · ' + countFor(activeMap) + ' auf ' + activeMap;
+}
+
+function renderList(rows) {
 
   luList.innerHTML = rows.length ? rows.map(l => {
     const n = (l.lineups || []).length;
@@ -131,9 +174,63 @@ function renderList() {
         <span class="lu-arrow" aria-hidden="true">&rarr;</span>
       </button>`;
   }).join('') : `<p class="empty">Kein Lineup gefunden. Andere Suche versuchen.</p>`;
+}
 
-  document.getElementById('count').textContent =
-    rows.length + (rows.length === 1 ? ' Lineup' : ' Lineups') + ' · ' + countFor(activeMap) + ' auf ' + activeMap;
+/* ---------- 2b) Radar: wo die Utility landet ---------- */
+// Lineups mit (fast) gleichem Landepunkt teilen sich einen Marker.
+function clusterize(rows) {
+  const out = [];
+  for (const l of rows) {
+    if (!l.landAt) continue;
+    const c = out.find(c => Math.hypot(c.x - l.landAt.x, c.y - l.landAt.y) < 0.025);
+    if (c) c.items.push(l); else out.push({ x: l.landAt.x, y: l.landAt.y, items: [l] });
+  }
+  return out;
+}
+
+function pinHtml(c, i) {
+  const types = new Set(c.items.map(l => l.type)), sides = new Set(c.items.map(l => l.side));
+  const bg = types.size === 1 ? typeColor(c.items[0].type) : 'var(--hud)';
+  const side = sides.size === 1 ? 'side-' + c.items[0].side : 'side-mix';
+  const label = c.items.length > 1 ? c.items.length : c.items[0].type.charAt(0);
+  const tip = c.items.map(l => `${l.title} – ${l.type} von ${l.from}`).join(' · ');
+  return `<button class="pin ${side}${i === openCluster ? ' open' : ''}" style="left:${pct(c.x)};top:${pct(c.y)};background:${bg}"
+    data-c="${i}" title="${esc(tip)}" aria-label="${esc(tip)}">${label}</button>`;
+}
+
+function popHtml(c) {
+  const side = c.x > 0.7 ? ' left' : c.x < 0.3 ? ' right' : '';
+  const up = c.y > 0.6 ? ' up' : '';
+  return `<div class="pop${side}${up}" style="left:${pct(c.x)};top:${pct(c.y)}" role="menu">
+    ${c.items.map(l => {
+      const r = asResults(l)[0];
+      return `<button class="pop-item" data-id="${esc(l.id)}" role="menuitem">
+        ${r && r.img ? `<img src="${esc(thumbOf(r.img))}" data-full="${esc(r.img)}" alt="" onerror="${onThumbErr}">` : ''}
+        <span><b>${esc(l.title)}</b><small>${esc(l.side)} · ${esc(l.type)} · von ${esc(l.from)}</small></span>
+      </button>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderRadar(rows) {
+  radarClusters = clusterize(rows);
+  if (openCluster >= radarClusters.length) openCluster = -1;
+  radarEl.innerHTML = `
+    <img src="${esc(radarOf(activeMap))}" alt="Radar ${esc(activeMap)}">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
+    ${radarClusters.map(pinHtml).join('')}
+    ${openCluster >= 0 ? popHtml(radarClusters[openCluster]) : ''}`;
+  showLines(openCluster);
+  const missing = rows.filter(l => !l.landAt).length;
+  radarNote.innerHTML = missing
+    ? `${missing} ${missing === 1 ? 'Lineup hat' : 'Lineups haben'} noch keinen Radar-Punkt` +
+      (isLocal ? ` · <a href="editor.html#fill=${encodeURIComponent(activeMap)}">jetzt nachtragen</a>` : '')
+    : '';
+}
+
+function showLines(i) {
+  const svg = radarEl.querySelector('svg');
+  if (svg) svg.innerHTML = i >= 0 && radarClusters[i] ? throwLines(radarClusters[i].items) : '';
 }
 
 /* ---------- 3) Detailansicht: ein Lineup ---------- */
@@ -154,15 +251,19 @@ function showMaps() {
   setHash('');
   window.scrollTo(0, 0);
 }
-function showList(name) {
-  activeMap = name; activeId = null;
+function showList(name, mode = listMode) {
+  if (name !== activeMap) { sideFilter = ''; typeFilter = ''; }
+  activeMap = name; activeId = null; openCluster = -1;
+  listMode = mode === 'radar' && radarOf(name) ? 'radar' : 'list';
+  modeSeg.hidden = !radarOf(name);
   mapView.hidden = true; detailView.hidden = true; listView.hidden = false;
   listTitle.textContent = name;
   lead.textContent = 'Lineup wählen, um Position, Würfe und Result im Detail zu sehen.';
   addLink.href = 'editor.html#map=' + encodeURIComponent(name);
   q.value = '';
-  renderList();
-  setHash(encodeURIComponent(name));
+  renderFilters();
+  renderView();
+  setHash(encodeURIComponent(name) + (listMode === 'radar' ? '/radar' : ''));
   window.scrollTo(0, 0);
 }
 function showDetail(id) {
@@ -188,7 +289,35 @@ luList.addEventListener('click', e => {
 });
 document.getElementById('backToMaps').addEventListener('click', showMaps);
 document.getElementById('backToList').addEventListener('click', () => showList(activeMap));
-q.addEventListener('input', renderList);
+q.addEventListener('input', () => { openCluster = -1; renderView(); });
+
+modeSeg.addEventListener('click', e => {
+  const b = e.target.closest('[data-mode]'); if (!b) return;
+  showList(activeMap, b.dataset.mode);
+});
+filtersEl.addEventListener('click', e => {
+  const b = e.target.closest('[data-f]'); if (!b) return;
+  if (b.dataset.f === 'side') sideFilter = b.dataset.v; else typeFilter = b.dataset.v;
+  openCluster = -1;
+  renderFilters(); renderView();
+});
+
+// Radar: Hover zeigt Wurflinien, Klick öffnet das Lineup bzw. die Auswahl bei mehreren
+radarEl.addEventListener('mouseover', e => { const p = e.target.closest('.pin'); if (p) showLines(+p.dataset.c); });
+radarEl.addEventListener('mouseout', e => { if (e.target.closest('.pin')) showLines(openCluster); });
+radarEl.addEventListener('click', e => {
+  const item = e.target.closest('.pop-item');
+  if (item) { showDetail(item.dataset.id); return; }
+  const p = e.target.closest('.pin');
+  if (p) {
+    const c = radarClusters[+p.dataset.c];
+    if (c.items.length === 1) { showDetail(c.items[0].id); return; }
+    openCluster = openCluster === +p.dataset.c ? -1 : +p.dataset.c;
+  } else if (!e.target.closest('.pop')) openCluster = -1;
+  renderView();
+  const first = radarEl.querySelector('.pop-item');
+  if (first && p) first.focus({ preventScroll: true });
+});
 
 // Lupe (nur Detailansicht)
 attachLens(detail);
@@ -199,7 +328,11 @@ detail.addEventListener('click', e => {
   lbImg.src = el.dataset.src; lb.classList.add('open');
 });
 lb.addEventListener('click', () => lb.classList.remove('open'));
-document.addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('open'); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  lb.classList.remove('open');
+  if (openCluster >= 0) { openCluster = -1; renderView(); }
+});
 
 // Start: Daten aller Maps laden, dann rendern + routen.
 function boot() {
@@ -209,7 +342,7 @@ function boot() {
   const parts = raw.split('/').map(decodeURIComponent);
   const id = parts[1];
   if (id && LINEUPS.some(l => l.id === id)) showDetail(id);
-  else if (LINEUPS.some(l => l.map === parts[0])) showList(parts[0]);
+  else if (LINEUPS.some(l => l.map === parts[0])) showList(parts[0], id === 'radar' ? 'radar' : 'list');
   else showMaps();
 }
 

@@ -14,7 +14,9 @@
 .panel{border:1px solid var(--edge);background:var(--panel);padding:22px 24px}
 .panel-head{display:flex;align-items:center;gap:12px;margin:0 0 18px}
 .panel-head h2{font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.06em;font-size:19px;margin:0}
-.panel-head .chip{margin-left:auto}
+.panel-head > .chip{margin-left:auto}
+.ed-radar{cursor:crosshair;max-width:none}
+.ed-radar .pin{pointer-events:none}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
 .field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .field > span{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--sand)}
@@ -149,6 +151,7 @@ let dirty = false;
 let dirHandle = null;
 let pasteTarget = null;   // zuletzt fokussierter Bild-Slot (für Strg+V)
 let fileTarget = null;    // Slot, für den der Datei-Dialog offen ist
+let radarMode = 'land';   // welcher Radar-Punkt beim nächsten Klick gesetzt wird: 'land' | 'throw'
 
 const slug = s => String(s).toLowerCase()
   .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
@@ -159,6 +162,7 @@ function blank(map) {
   return {
     editing: null, idTouched: false,
     id: '', map: map || MAPS[0].name, side: 'T', type: 'Smoke', title: '', from: '',
+    landAt: null, throwAt: null,
     position: { img: null, note: '' },
     lineups:  [{ img: null, label: 'Wurf', stance: 'stand', input: ['MOUSE1'], note: '' }],
     result:   [{ img: null, note: '' }],
@@ -170,6 +174,7 @@ function fromLineup(l) {
   return {
     editing: l.id, idTouched: true,
     id: l.id, map: l.map, side: l.side || 'T', type: l.type || 'Smoke', title: l.title || '', from: l.from || '',
+    landAt: l.landAt ? { ...l.landAt } : null, throwAt: l.throwAt ? { ...l.throwAt } : null,
     position: { img: pathSlot(l.position && l.position.img), note: (l.position && l.position.note) || '' },
     lineups:  (l.lineups || []).map(s => ({ img: pathSlot(s.img), label: s.label || '', stance: s.stance || '', input: [...(s.input || [])], note: s.note || '' })),
     result:   asResults(l).map(r => ({ img: pathSlot(r.img), note: r.note || '' })),
@@ -201,6 +206,45 @@ function dropZone(key, slot, hint) {
     </div>`;
 }
 
+// Nächstes Lineup derselben Map ohne Landepunkt (nach dem aktuellen, dann von vorn)
+function nextMissing() {
+  const rows = LINEUPS.filter(l => l.map === state.map && !l.landAt && l.id !== state.editing);
+  const i = LINEUPS.findIndex(l => l.id === state.editing);
+  return rows.find(l => LINEUPS.indexOf(l) > i) || rows[0] || null;
+}
+
+function radarPanel() {
+  const src = radarOf(state.map);
+  if (!src) return '';
+  const s = state, res = imgSrc((s.result[0] || {}).img);
+  const missing = LINEUPS.filter(l => l.map === s.map && !l.landAt && l.id !== s.editing).length;
+  const modeChip = (v, t) => `<button type="button" class="chip" data-act="radarMode" data-v="${v}" aria-pressed="${radarMode === v}">${t}</button>`;
+  return `
+    <section class="panel" id="radarPanel">
+      <div class="panel-head"><h2>Radar</h2>
+        <div class="seg">${modeChip('land', '1 · Landepunkt')}${modeChip('throw', '2 · Wurfposition')}</div>
+        <button class="mini danger" type="button" data-act="radarClear" style="margin-left:auto" ${s.landAt || s.throwAt ? '' : 'disabled'}>Punkte entfernen</button>
+      </div>
+      <div class="slot">
+        <div class="radar ed-radar" data-act="radarClick">
+          <img src="${esc(src)}" alt="Radar ${esc(s.map)}" draggable="false">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${throwLines([s])}</svg>
+          ${s.landAt ? `<span class="pin side-${esc(s.side)}" style="left:${pct(s.landAt.x)};top:${pct(s.landAt.y)};background:${typeColor(s.type)}">${esc(s.type.charAt(0))}</span>` : ''}
+        </div>
+        <div class="slot-side">
+          <p class="note" style="margin:0">Erst auf die Stelle klicken, wo die Utility landet, dann auf die Wurfposition.
+            Ohne Landepunkt erscheint das Lineup nicht auf dem Radar.</p>
+          ${res ? `<div><p class="col-label">Result zum Vergleich</p><div class="shot"><img src="${esc(res)}" alt=""><div class="lens"></div></div></div>` : ''}
+          ${missing ? `<div class="foot">
+              <button class="primary" type="button" data-act="saveNext">Speichern &amp; nächstes ohne Punkt</button>
+              <button class="mini" type="button" data-act="skipNext">Überspringen</button>
+            </div>
+            <p class="order">Noch ${missing} ${missing === 1 ? 'Lineup' : 'Lineups'} auf ${esc(s.map)} ohne Landepunkt</p>` : ''}
+        </div>
+      </div>
+    </section>`;
+}
+
 function renderForm() {
   const s = state, locked = !!s.editing;
   formEl.innerHTML = `
@@ -221,6 +265,8 @@ function renderForm() {
           <input class="in" data-k="id" value="${esc(s.id)}" ${locked ? 'disabled' : ''} spellcheck="false"></label>
       </div>
     </section>
+
+    ${radarPanel()}
 
     <section class="panel">
       <div class="panel-head"><h2>Position</h2></div>
@@ -290,6 +336,8 @@ function toLineup(imgOf) {
   const results = s.result.map(r => ({ img: imgOf(r.img), note: r.note }));
   return {
     id: s.id, map: s.map, side: s.side, type: s.type, title: s.title, from: s.from,
+    ...(s.landAt ? { landAt: s.landAt } : {}),
+    ...(s.throwAt ? { throwAt: s.throwAt } : {}),
     position: { img: imgOf(s.position.img), note: s.position.note },
     lineups: s.lineups.map(w => ({ img: imgOf(w.img), label: w.label, stance: w.stance, input: w.input, note: w.note })),
     result: results.length === 1 ? results[0] : results,
@@ -324,12 +372,14 @@ formEl.addEventListener('input', e => {
   const k = e.target.dataset.k; if (!k) return;
   setPath(k, e.target.value);
   if (k === 'id') state.idTouched = true;
+  if (k === 'map') { state.landAt = state.throwAt = null; radarMode = 'land'; }
   if (!state.editing && !state.idTouched && ['title', 'type', 'map'].includes(k)) {
     state.id = suggestId();
     formEl.querySelector('[data-k="id"]').value = state.id;
   }
   touch();
-  renderPreview();
+  // Map/Typ ändern Radarbild bzw. Markerfarbe → Formular neu zeichnen
+  if (k === 'map' || k === 'type') renderForm(); else renderPreview();
 });
 
 formEl.addEventListener('keydown', e => {
@@ -357,6 +407,16 @@ formEl.addEventListener('click', e => {
     else if (act === 'remove') { const it = state[list][n]; if (it.img && it.img.url) URL.revokeObjectURL(it.img.url); state[list].splice(n, 1); }
     else if (act === 'up' || act === 'down') { const a = state[list], j = act === 'up' ? n - 1 : n + 1; [a[n], a[j]] = [a[j], a[n]]; }
     else if (act === 'clear') { setSlot(btn.dataset.slot, null); return; }
+    else if (act === 'radarClick') {
+      const r = btn.getBoundingClientRect();
+      const pt = { x: +((e.clientX - r.left) / r.width).toFixed(3), y: +((e.clientY - r.top) / r.height).toFixed(3) };
+      if (radarMode === 'land') { state.landAt = pt; if (!state.throwAt) radarMode = 'throw'; }
+      else state.throwAt = pt;
+    }
+    else if (act === 'radarMode') radarMode = v;
+    else if (act === 'radarClear') { state.landAt = state.throwAt = null; radarMode = 'land'; }
+    else if (act === 'saveNext') { saveNext(); return; }
+    else if (act === 'skipNext') { gotoNext(false); return; }
     else return;
     touch(); renderForm();
     return;
@@ -490,7 +550,7 @@ const J = v => JSON.stringify(v);
 function fmtObj(o) { return '{ ' + Object.entries(o).map(([k, v]) => `${k}: ${J(v)}`).join(', ') + ' }'; }
 
 function fmtLineup(l) {
-  const known = ['id', 'map', 'side', 'type', 'title', 'from', 'position', 'lineups', 'result'];
+  const known = ['id', 'map', 'side', 'type', 'title', 'from', 'landAt', 'throwAt', 'position', 'lineups', 'result'];
   const res = Array.isArray(l.result)
     ? `[\n${l.result.map(r => '      ' + fmtObj(r) + ',').join('\n')}\n    ]`
     : fmtObj(l.result || { img: '', note: '' });
@@ -502,6 +562,8 @@ function fmtLineup(l) {
     `    type:  ${J(l.type)},`,
     `    title: ${J(l.title)},`,
     `    from:  ${J(l.from)},`,
+    ...(l.landAt ? [`    landAt:  ${fmtObj(l.landAt)},`] : []),
+    ...(l.throwAt ? [`    throwAt: ${fmtObj(l.throwAt)},`] : []),
     `    position: ${fmtObj(l.position || { img: '', note: '' })},`,
     '    lineups: [',
     ...(l.lineups || []).map(s => '      ' + fmtObj(s) + ','),
@@ -569,7 +631,7 @@ function planImages() {
 
 async function save() {
   const errs = validate();
-  if (errs.length) { setStatus('Nicht gespeichert: ' + errs.join(' · '), 'err'); return; }
+  if (errs.length) { setStatus('Nicht gespeichert: ' + errs.join(' · '), 'err'); return false; }
   const btns = [document.getElementById('save'), document.getElementById('save2')];
   btns.forEach(b => b.disabled = true);
   try {
@@ -608,9 +670,11 @@ async function save() {
     setStatus(canWrite
       ? `Gespeichert in data/${mapSlug(state.map)}.js · <a href="${link}">im Lineup-Buch ansehen</a>`
       : `Heruntergeladen. Im Dateinamen steht der Zielpfad (__ = Ordner-Trenner), z. B. ${base.replace(/\//g, '__')}__result.webp → ${base}/result.webp.`, 'ok');
+    return true;
   } catch (err) {
     if (err.name !== 'AbortError') setStatus('Fehler beim Speichern: ' + esc(err.message), 'err');
     else setStatus('Abgebrochen – kein Ordner gewählt.', 'err');
+    return false;
   } finally {
     btns.forEach(b => b.disabled = false);
   }
@@ -644,11 +708,29 @@ async function remove() {
   }
 }
 
+/* ---------- Radar nachtragen: Lineup für Lineup ---------- */
+function scrollToRadar() {
+  const el = document.getElementById('radarPanel'); if (!el) return;
+  window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 90);
+}
+
+function gotoNext(saved) {
+  if (!saved && dirty && !confirm('Ungespeicherte Änderungen verwerfen?')) return;
+  const n = nextMissing();
+  if (!n) { setStatus(`Alle Lineups auf ${esc(state.map)} haben einen Landepunkt.`, 'ok'); return; }
+  load(fromLineup(n));
+  scrollToRadar();
+  setStatus(`${saved ? 'Gespeichert. ' : ''}Weiter mit „${esc(n.title)}“ (${esc(n.type)} von ${esc(n.from)}).`, saved ? 'ok' : '');
+}
+
+async function saveNext() { if (await save()) gotoNext(true); }
+
 /* ---------- Start ---------- */
 function load(s) {
   state = s;
   if (!state.editing) state.id = suggestId();
   dirty = false;
+  radarMode = state.landAt && !state.throwAt ? 'throw' : 'land';
   history.replaceState(null, '', state.editing ? '#edit=' + encodeURIComponent(state.editing) : '#map=' + encodeURIComponent(state.map));
   document.getElementById('backLink').href = 'index.html#' + encodeURIComponent(state.map) + (state.editing ? '/' + encodeURIComponent(state.editing) : '');
   renderPick(); renderForm(); setStatus('');
@@ -674,11 +756,15 @@ document.getElementById('pickDir').addEventListener('click', () =>
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save(); } });
 window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
 attachLens(preview);
+attachLens(formEl);
 
 loadLineups(async () => {
   if (canWrite) { try { dirHandle = (await kv('readonly', s => s.get('dir'))) || null; } catch {} }
   showFolder();
   const h = new URLSearchParams(location.hash.slice(1));
+  // #fill=<Map>: direkt mit dem ersten Lineup ohne Landepunkt starten
+  const fill = LINEUPS.find(x => x.map === h.get('fill') && !x.landAt);
+  if (fill) { load(fromLineup(fill)); scrollToRadar(); return; }
   const l = LINEUPS.find(x => x.id === h.get('edit'));
   load(l ? fromLineup(l) : blank(MAPS.some(m => m.name === h.get('map')) ? h.get('map') : undefined));
 });
