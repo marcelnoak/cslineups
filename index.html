@@ -66,6 +66,10 @@ const lead        = document.getElementById('lead');
 const addLink     = document.getElementById('addLink');
 const editLink    = document.getElementById('editLink');
 
+// Editor-Links nur lokal (localhost oder Doppelklick auf die Datei); die öffentliche Seite hat keinen Editor.
+const isLocal = ['localhost', '127.0.0.1', ''].includes(location.hostname);
+addLink.hidden = editLink.hidden = !isLocal;
+
 let activeMap = null;   // aktuell gewählte Map (Liste)
 let activeId  = null;   // aktuell gewähltes Lineup (Detail)
 
